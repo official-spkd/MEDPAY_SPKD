@@ -56,13 +56,13 @@
   --navy: #0a2e1f;
   --navy-2: #12402a;
   --navy-soft: #185034;
-  --background: #0b1224;
-  --surface: #121b33;
-  --border: #233054;
-  --border-strong: #2d3c66;
-  --text-primary: #e8edf8;
-  --text-secondary: #a6b0cb;
-  --text-muted: #6f7a99;
+  --background: #08130e;
+  --surface: #0f1f18;
+  --border: #1d3328;
+  --border-strong: #284637;
+  --text-primary: #e6f2ec;
+  --text-secondary: #a3bfb1;
+  --text-muted: #6f8f80;
   --success: #3ec487;
   --success-bg: #12301f;
   --warning: #e0a04e;
@@ -98,7 +98,7 @@ button { font-family: var(--font-body); }
 input, select, textarea { font-family: var(--font-body); color: var(--text-primary); }
 ::selection { background: var(--primary-glow); }
 ::-webkit-scrollbar { width: 9px; height: 9px; }
-::-webkit-scrollbar-thumb { background: rgba(100, 110, 140, 0.35); border-radius: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(110, 145, 128, 0.35); border-radius: 8px; }
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* ── Shell layout ───────────────────────────────────────────────────────── */

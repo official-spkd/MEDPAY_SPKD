@@ -2,6 +2,9 @@
   <aside class="sidebar" :class="{ collapsed: state.sidebarCollapsed, open: state.sidebarMobileOpen }">
     <div class="brand">
       <Logo light :fs="19" :bx="38" sub="BY SPKD" />
+      <button class="sb-close" @click="state.sidebarMobileOpen = false" aria-label="Tutup menu">
+        <Icon name="x" :size="18" />
+      </button>
     </div>
     <nav>
       <div class="nav-group" v-for="g in groups" :key="g.label">
@@ -25,7 +28,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import Logo from './Logo.vue'
 import Icon from './Icon.vue'
@@ -33,6 +36,8 @@ import { state, hasPerm } from '../store'
 import { ROLE_LABELS } from '../format'
 
 const route = useRoute()
+// Tutup sidebar mobile setiap kali pindah halaman
+watch(() => route.path, () => { state.sidebarMobileOpen = false })
 const isActive = (p) => route.path === p || (p !== '/' && route.path.startsWith(p))
 const canSeeEngine = computed(() => ['SUPER_ADMIN', 'IT_SIMRS', 'MANAGEMENT', 'AUDITOR'].includes(state.user?.role))
 const canConfigure = computed(() => hasPerm('CONFIGURE'))

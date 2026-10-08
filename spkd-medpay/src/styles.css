@@ -560,7 +560,14 @@ textarea.input { min-height: 80px; resize: vertical; }
   .search-box { display: none; }
 }
 .sidebar-backdrop { display: none; }
+.sb-close {
+  display: none; margin-left: auto; width: 34px; height: 34px; flex-shrink: 0; border-radius: 9px;
+  border: none; background: rgba(255, 255, 255, 0.08); color: #eefaf3; cursor: pointer;
+  align-items: center; justify-content: center;
+}
+.sb-close:hover { background: rgba(255, 255, 255, 0.16); }
 @media (max-width: 900px) {
+  .sb-close { display: inline-flex; }
   .sidebar-backdrop { display: block; position: fixed; inset: 0; background: rgba(4, 20, 13, 0.55); z-index: 35; }
 }
 

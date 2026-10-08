@@ -7,6 +7,7 @@
   </div>
   <div v-else :class="['shell', { 'sb-open': state.sidebarMobileOpen }]">
     <Shell />
+    <div v-if="state.sidebarMobileOpen" class="sidebar-backdrop" @click="state.sidebarMobileOpen = false"></div>
     <div class="main-wrap" :class="{ expanded: state.sidebarCollapsed && !isMobile }">
       <Topbar />
       <router-view />

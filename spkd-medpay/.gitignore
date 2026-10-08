@@ -1,23 +1,24 @@
-# Dependencies & build output
-node_modules/
-frontend/dist/
-frontend/.vite/
-frontend/.nuxt/
-frontend/.output/
+# Nuxt dev/build outputs
+.output
+.data
+.nuxt
+.nitro
+.cache
+dist
 
-# Go build artifacts
-backend/transcpg-api
-/transcpg-api
-*.exe
+# Node dependencies
+node_modules
 
-# Env & secrets
-.env
-*.local
+# Logs
+logs
+*.log
 
-# Arsip stack lama (Laravel + Nuxt)
-_legacy/
-
-# OS / editor
+# Misc
 .DS_Store
-.idea/
-.vscode/
+.fleet
+.idea
+
+# Local env files
+.env
+.env.*
+!.env.example

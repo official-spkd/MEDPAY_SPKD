@@ -1,0 +1,17 @@
+# Environment (berisi kredensial)
+.env
+.env.*
+!.env.example
+
+# Hasil build
+/bin/
+/tmp/
+*.exe
+*.test
+*.out
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

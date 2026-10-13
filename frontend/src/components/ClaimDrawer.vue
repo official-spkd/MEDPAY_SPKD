@@ -173,11 +173,11 @@
       </div>
 
       <div class="drawer-foot" v-if="d">
-        <template v-for="t in availableTransitions" :key="t">
+        <template v-for="t in availableTrans" :key="t">
           <button class="btn" :class="transBtnClass(t)" @click="askTransition(t)">{{ transLabel(t) }}</button>
         </template>
         <router-link v-if="canEdit" :to="'/claims/' + d.claim.id + '/edit'" class="btn btn-outline">Edit Klaim</router-link>
-        <button v-if="hasPerm('DELETE')" class="btn btn-danger" @click="askDelete">Hapus</button>
+        <button v-if="hasPerm('DELETE') && d.claim.status === 'draft'" class="btn btn-danger" @click="askDelete">Hapus</button>
         <span style="flex:1" />
         <span style="font-size:11px;color:var(--text-muted);align-self:center">Aksi diaudit (append-only)</span>
       </div>
@@ -253,19 +253,29 @@ const TRANS_LABELS = {
   partially_approved: '☑ Setujui Sebagian', rejected: '⛔ Tandai Ditolak', disputed: '⚔ Disanggah',
   partially_paid: '💳 Bayar Sebagian', paid: '💰 Tandai Lunas', draft: '✎ Kembalikan ke Draft', written_off: '🗑 Hapus Buku',
 }
+// Transisi sesuai diagram status SRS (Gambar B.3). Sebagian Dibayar & Lunas tidak ada di
+// sini karena dihitung otomatis dari pencatatan pembayaran (BR-05).
 const allowedTrans = {
   draft: ['ready_to_submit', 'written_off'],
   ready_to_submit: ['submitted', 'draft', 'written_off'],
-  submitted: ['approved', 'partially_approved', 'rejected', 'disputed'],
-  approved: ['partially_paid', 'paid', 'disputed'],
-  partially_approved: ['partially_paid', 'paid', 'rejected', 'disputed'],
+  submitted: ['approved', 'partially_approved', 'rejected'],
+  approved: [],
+  partially_approved: ['rejected'],
   rejected: ['disputed', 'written_off'],
-  disputed: ['submitted', 'ready_to_submit', 'written_off'],
-  partially_paid: ['paid', 'disputed', 'written_off'],
+  disputed: ['submitted', 'written_off'],
+  partially_paid: ['written_off'],
   paid: ['written_off'],
   written_off: [],
 }
-const availableTrans = computed(() => d.value ? allowedTrans[d.value.claim.status] || [] : [])
+// Izin per transisi (sama dengan backend): ajukan & hapus buku = APPROVE,
+// keputusan penjamin = VERIFY, banding = REOPEN, lainnya = EDIT.
+const TRANS_PERM = {
+  submitted: 'APPROVE', written_off: 'APPROVE', approved: 'VERIFY', partially_approved: 'VERIFY',
+  rejected: 'VERIFY', disputed: 'REOPEN', ready_to_submit: 'EDIT', draft: 'EDIT',
+}
+const availableTrans = computed(() => d.value
+  ? (allowedTrans[d.value.claim.status] || []).filter(t => hasPerm(TRANS_PERM[t] || 'EDIT'))
+  : [])
 function transLabel(t) { return TRANS_LABELS[t] || t }
 function transBtnClass(t) {
   return t === 'written_off' || t === 'rejected' ? 'btn-danger' : t === 'submitted' ? 'btn-teal' : 'btn-outline'

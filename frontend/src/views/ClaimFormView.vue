@@ -298,27 +298,26 @@ async function resolveTariff() {
   resolveErr.value = ''
   if (!form.value.primaryDiagnosis) { toast('Isi diagnosa utama terlebih dahulu (Langkah 2).', 'warning'); return }
   resolving.value = true
-  // Grouper mock client-side deterministik — sama seperti adapter server (demo).
-  const dx = form.value.primaryDiagnosis
-  if (!/^[A-Za-z]\d{2}/.test(dx)) {
-    resolveErr.value = 'UNGROUPABLE'
+  // Grouper dijalankan di server (F-TRF-04); hasilnya diverifikasi ulang saat klaim disimpan.
+  try {
+    const res = await api('grouper/preview', {
+      method: 'POST',
+      body: {
+        hospitalId: form.value.hospitalId, primaryDiagnosis: form.value.primaryDiagnosis,
+        careType: form.value.careType, careClass: form.value.careClass,
+        admissionDate: form.value.admissionDate, dischargeDate: form.value.dischargeDate,
+      },
+    })
+    const g = res.grouper
+    form.value.inacbgCode = g.code
+    form.value.inacbgBaseTariff = g.baseTariff
+    form.value.inacbgDescription = g.description
+    toast('Tarif diresolve: ' + g.code + ' = ' + formatRp(g.baseTariff), 'success')
+  } catch (e) {
+    resolveErr.value = (e.payload && e.payload.grouper && e.payload.grouper.error) || e.message
+  } finally {
     resolving.value = false
-    return
   }
-  const chapter = dx[0].toUpperCase()
-  const care = form.value.careType === 'RAWAT_INAP' ? '1' : '3'
-  const classDigit = { I: '1', II: '2', III: '3' }[form.value.careClass] || '3'
-  const severity = form.value.los > 6 ? '2' : '1'
-  const code = form.value.careType === 'RAWAT_INAP'
-    ? chapter + '-' + care + '-' + severity + classDigit + '-' + form.value.careClass
-    : chapter + '-' + care + '-1' + severity + '-0'
-  const seed = (dx.charCodeAt(0) * 7 + dx.charCodeAt(1) * 13) % 900
-  const mult = form.value.careType === 'RAWAT_INAP' ? 4500000 : 750000
-  form.value.inacbgCode = code
-  form.value.inacbgBaseTariff = Math.round(mult + seed * 5000 + form.value.los * 120000)
-  form.value.inacbgDescription = 'GROUP INA-CBG TERPILIH (DEMO)'
-  toast('Tarif diresolve (adapter demo): ' + code + ' = ' + formatRp(form.value.inacbgBaseTariff), 'success')
-  resolving.value = false
 }
 
 async function save() {

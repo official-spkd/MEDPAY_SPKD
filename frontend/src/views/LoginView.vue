@@ -67,6 +67,7 @@ const email = ref('')
 const password = ref('')
 const mfaCode = ref('')
 const mfaStep = ref(false)
+const mfaToken = ref('') // token sementara dari backend setelah sandi benar
 const busy = ref(false)
 const error = ref('')
 
@@ -95,7 +96,7 @@ async function doLogin() {
   busy.value = true
   try {
     const res = await api('auth/login', { method: 'POST', body: { email: email.value, password: password.value } })
-    if (res.mfaRequired) { mfaStep.value = true; return }
+    if (res.mfaRequired) { mfaToken.value = res.mfaToken || ''; mfaStep.value = true; return }
     await finishLogin(res.token)
   } catch (e) {
     error.value = e.message
@@ -106,7 +107,7 @@ async function doVerify() {
   error.value = ''
   busy.value = true
   try {
-    const res = await api('auth/verify', { method: 'POST', body: { email: email.value, code: mfaCode.value } })
+    const res = await api('auth/verify', { method: 'POST', body: { email: email.value, code: mfaCode.value, mfaToken: mfaToken.value } })
     await finishLogin(res.token)
   } catch (e) {
     error.value = e.message

@@ -90,17 +90,22 @@ const ROLE_PERMS = {
   VIEWER: ['VIEW'],
 }
 
+// Diagram status SRS (Gambar B.3); Sebagian Dibayar & Lunas hanya dari pembayaran.
 const CLAIM_TRANSITIONS = {
   draft: ['ready_to_submit', 'written_off'],
   ready_to_submit: ['submitted', 'draft', 'written_off'],
-  submitted: ['approved', 'partially_approved', 'rejected', 'disputed'],
-  approved: ['partially_paid', 'paid', 'disputed'],
-  partially_approved: ['partially_paid', 'paid', 'rejected', 'disputed'],
+  submitted: ['approved', 'partially_approved', 'rejected'],
+  approved: [],
+  partially_approved: ['rejected'],
   rejected: ['disputed', 'written_off'],
-  disputed: ['submitted', 'ready_to_submit', 'written_off'],
-  partially_paid: ['paid', 'disputed', 'written_off'],
+  disputed: ['submitted', 'written_off'],
+  partially_paid: ['written_off'],
   paid: ['written_off'],
   written_off: [],
+}
+const TRANSITION_PERM = {
+  submitted: 'APPROVE', written_off: 'APPROVE', approved: 'VERIFY', partially_approved: 'VERIFY',
+  rejected: 'VERIFY', disputed: 'REOPEN',
 }
 const canTransition = (from, to) => (CLAIM_TRANSITIONS[from] || []).includes(to)
 
@@ -740,6 +745,7 @@ function handleClaimUpdate({ user, params, body }) {
 function handleClaimDelete({ user, params }) {
   const c = claimByID(params[0])
   if (!c || !scopeOK(user, c)) return fail(404, 'Klaim tidak ditemukan')
+  if (c.status !== 'draft') return fail(409, 'Hanya klaim berstatus Draft yang dapat dihapus')
   const removed = db.resumeItems.filter((r) => r.claimId === c.id).length
   db.resumeItems = db.resumeItems.filter((r) => r.claimId !== c.id)
   db.claims = db.claims.filter((x) => x.id !== c.id)
@@ -770,6 +776,8 @@ function handleTransition({ user, params, body }) {
   const c = claimByID(params[0])
   if (!c || !scopeOK(user, c)) return fail(404, 'Klaim tidak ditemukan')
   const to = body.to
+  const need = TRANSITION_PERM[to] || 'EDIT'
+  if (!hasPermission(user, need)) return fail(403, `Peran Anda (${user.role}) tidak memiliki izin ${need}`)
   if (!canTransition(c.status, to)) return fail(409, 'Transisi tidak sah: ' + c.status + ' → ' + to)
   if (to === 'ready_to_submit') {
     const oc = evaluateClaim(c, todayISO())
@@ -779,7 +787,7 @@ function handleTransition({ user, params, body }) {
     }
     if (!c.declarationChecked) return fail(409, 'Pernyataan kebenaran data belum dicentang')
   } else if (to === 'submitted') {
-    if (!hasPermission(user, 'APPROVE')) return fail(403, 'Pengajuan klaim memerlukan peran Reviewer/Admin (maker-checker)')
+    if (c.createdBy === user.name) return fail(403, 'Maker-checker: pembuat klaim tidak boleh mengajukan klaimnya sendiri')
     if (evaluateClaim(c, todayISO()).hasOpenBlocker) return fail(409, 'Klaim masih memiliki blocker terbuka — tidak dapat diajukan')
     c.submittedAt = nowStamp()
   } else if (to === 'rejected') {
@@ -794,6 +802,15 @@ function handleTransition({ user, params, body }) {
   c.statusHistory.push({ at: nowStamp(), actor: user.name, from: before, to, note: str(body.note) })
   audit(user, 'STATUS_TRANSITION', 'claim', c.id, before, to + ' — ' + str(body.note))
   return ok(c)
+}
+
+function handleGrouperPreview({ user, body }) {
+  const h = hospitalByID(str(body.hospitalId) || user.hospitalId)
+  if (!h || (user.hospitalId && h.id !== user.hospitalId)) return fail(400, 'RS tidak dikenal')
+  const los = losOf(str(body.admissionDate), str(body.dischargeDate))
+  const g = mockGrouper(str(body.primaryDiagnosis).toUpperCase(), str(body.careType), str(body.careClass), los, !!h.eklaimConfigured)
+  if (!g.ok) return { status: 422, data: { error: 'Grouper gagal: ' + g.error, grouper: g } }
+  return ok({ grouper: g, los })
 }
 
 // ── Handler: Scrubber ────────────────────────────────────────────────────────
@@ -1385,7 +1402,8 @@ const ROUTES = [
   ['PUT', /^claims\/([^/]+)$/, 'EDIT', handleClaimUpdate],
   ['DELETE', /^claims\/([^/]+)$/, 'DELETE', handleClaimDelete],
   ['POST', /^claims\/([^/]+)\/resolve$/, 'RESOLVE', handleResolveTariff],
-  ['POST', /^claims\/([^/]+)\/transition$/, 'EDIT', handleTransition],
+  ['POST', /^claims\/([^/]+)\/transition$/, 'VIEW', handleTransition],
+  ['POST', /^grouper\/preview$/, 'RESOLVE', handleGrouperPreview],
   ['POST', /^claims\/([^/]+)\/scrub$/, 'VIEW', handleScrubClaim],
 
   ['GET', /^scrubber\/top-causes$/, 'VIEW', handleScrubTopCauses],

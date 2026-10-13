@@ -39,7 +39,7 @@ export async function api(path, { method = 'GET', body } = {}) {
     if (tok) headers['Authorization'] = 'Bearer ' + tok
     let res
     try {
-      res = await fetch(withPort('api/v1/' + path), {
+      res = await fetch(withPort('api/' + path), {
         method, headers, body: body !== undefined ? JSON.stringify(body) : undefined,
       })
     } catch (e) {
@@ -72,7 +72,7 @@ export async function downloadCsv(path, filename) {
     const headers = { }
     const tok = getToken()
     if (tok) headers['Authorization'] = 'Bearer ' + tok
-    const res = await fetch(withPort('api/v1/' + path), { headers })
+    const res = await fetch(withPort('api/' + path), { headers })
     if (!res.ok) throw new ApiError('Ekspor gagal', res.status)
     blob = await res.blob()
   }

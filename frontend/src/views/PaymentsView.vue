@@ -18,7 +18,7 @@
             <label>Klaim <span class="req">*</span></label>
             <select class="input" v-model="pay.claimId">
               <option value="">— pilih klaim —</option>
-              <option v-for="c in payable" :key="c.id" :value="c.id">{{ c.id }} — {{ c.patientName }} ({{ CLAIM_LABELS[c.status] }} · gap {{ formatRpShort(gapOf(c)) }})</option>
+              <option v-for="c in payable" :key="c.id" :value="c.id">{{ docNo(c) }} — {{ c.patientName }} ({{ CLAIM_LABELS[c.status] }} · gap {{ formatRpShort(gapOf(c)) }})</option>
             </select>
           </div>
           <div class="form-grid">
@@ -41,7 +41,7 @@
               <tbody>
                 <tr v-for="p in payments" :key="p.payment.id">
                   <td style="font-size:12px">{{ formatDate(p.payment.receivedDate) }}</td>
-                  <td class="mono" style="font-size:11.5px">{{ p.payment.claimId }}<br /><span class="badge" :class="CLAIM_TONE[p.claim.status]" style="margin-top:3px">{{ CLAIM_LABELS[p.claim.status] }}</span></td>
+                  <td class="mono" style="font-size:11.5px">{{ p.payment.claimNo || p.payment.claimId }} <span style="color:var(--text-muted)">{{ docNo(p.payment, 'paymentNo') }}</span><br /><span class="badge" :class="CLAIM_TONE[p.claim.status]" style="margin-top:3px">{{ CLAIM_LABELS[p.claim.status] }}</span></td>
                   <td class="num" style="font-weight:700">{{ formatRp(p.payment.amount) }}</td>
                   <td style="font-size:12px;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.payment.payer }}</td>
                   <td><button v-if="hasPerm('EDIT')" class="btn btn-outline btn-xs" @click="undo(p.payment)" title="Undo pembayaran">↩</button></td>
@@ -70,7 +70,7 @@
           </div>
           <button class="btn btn-teal" :disabled="!imp.bankName || !imp.periodLabel || !imp.csv.trim() || busy" @click="doImport"><span v-if="busy" class="spin" style="border-top-color:#fff" /> Impor &amp; Auto-Match</button>
           <div class="alert success" v-if="impResult" style="margin-top:12px"><span>✓</span>
-            <span>Impor <b>{{ impResult.import.id }}</b> selesai: {{ impResult.matched }} matched, {{ impResult.needsReview }} perlu review, {{ impResult.unmatched }} unmatched. Lanjut ke tab Rekonsiliasi.</span>
+            <span>Impor <b>{{ docNo(impResult.import, 'importNo') }}</b> selesai: {{ impResult.matched }} matched, {{ impResult.needsReview }} perlu review, {{ impResult.unmatched }} unmatched. Lanjut ke tab Rekonsiliasi.</span>
           </div>
         </div>
         <div class="card card-pad">
@@ -81,7 +81,7 @@
               <thead><tr><th>Import</th><th>Bank</th><th>Periode</th><th class="num">Baris</th><th></th></tr></thead>
               <tbody>
                 <tr v-for="b in imports" :key="b.id" @click="openRecon(b.id)" :style="reconImportId === b.id ? 'background:var(--teal-bg)' : ''">
-                  <td class="mono">{{ b.id }}</td>
+                  <td class="mono">{{ docNo(b, 'importNo') }}</td>
                   <td>{{ b.bankName }}</td>
                   <td>{{ b.periodLabel }}</td>
                   <td class="num">{{ b.lineCount }}</td>
@@ -113,12 +113,12 @@
                   <td style="font-size:12px">{{ formatDate(l.line.valueDate) }}</td>
                   <td>
                     <div style="max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" :title="l.line.description">{{ l.line.description }}</div>
-                    <div v-if="l.claim" style="font-size:11px;color:var(--text-muted)">→ {{ l.claim.id }} {{ l.claim.patientName }}</div>
+                    <div v-if="l.claim" style="font-size:11px;color:var(--text-muted)">→ {{ docNo(l.claim) }} {{ l.claim.patientName }}</div>
                   </td>
                   <td class="num" style="font-weight:700">{{ formatRp(l.line.amount) }}</td>
                   <td>
-                    <span class="badge" :class="l.line.matchResult === 'matched' ? 'success' : l.line.matchResult === 'needs_review' ? 'warning' : 'neutral'">
-                      {{ l.line.matchResult === 'matched' ? 'Matched' : l.line.matchResult === 'needs_review' ? 'Perlu Review' : 'Unmatched' }}
+                    <span class="badge" :class="refTone('match_result', l.line.matchResult)">
+                      {{ refLabel('match_result', l.line.matchResult) }}
                     </span>
                     <div v-if="l.line.confirmed" style="font-size:10.5px;color:var(--success);margin-top:3px">✓ terkonfirmasi</div>
                   </td>
@@ -148,7 +148,7 @@
                 <span class="badge" :class="CLAIM_TONE[c.status]">{{ CLAIM_LABELS[c.status] }}</span>
               </div>
               <div style="font-size:12px;color:var(--text-secondary);margin-top:5px">
-                {{ c.claimId }} · SEP …{{ c.sepNo.slice(-6) }} · gap {{ formatRp(c.gap) }} · sudah dibayar {{ formatRp(c.paid) }}
+                {{ c.claimNo || c.claimId }} · SEP …{{ c.sepNo.slice(-6) }} · gap {{ formatRp(c.gap) }} · sudah dibayar {{ formatRp(c.paid) }}
               </div>
               <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px">Indikator: {{ c.reason }}</div>
             </div>
@@ -178,7 +178,7 @@ import { state, hasPerm, toast, loadBoot } from '../store'
 import MoneyInput from '../components/MoneyInput.vue'
 import PageHeader from '../components/PageHeader.vue'
 import Empty from '../components/Empty.vue'
-import { formatRp, formatRpShort, formatDate, formatDateTime, parseMoney, todayISO, sumTariff, jknTotal, CLAIM_LABELS, CLAIM_TONE } from '../format'
+import { formatRp, formatRpShort, formatDate, formatDateTime, parseMoney, todayISO, sumTariff, jknTotal, CLAIM_LABELS, CLAIM_TONE, docNo, refLabel, refTone } from '../format'
 
 const tab = ref('catat')
 const busy = ref(false)
@@ -212,7 +212,7 @@ async function record() {
   try {
     const res = await api('payments', { method: 'POST', body: { ...pay.value } })
     if (res.warning) payWarn.value = res.warning + ' — pembayaran tetap tercatat (revisi manual/rekonsiliasi menyusul).'
-    else payOk.value = 'Pembayaran ' + res.payment.id + ' tercatat. Status klaim → ' + CLAIM_LABELS[res.claimStatus] + '. Dibayar ' + formatRp(res.totalPaid) + ' dari gap ' + formatRp(res.gap) + '.'
+    else payOk.value = 'Pembayaran ' + docNo(res.payment, 'paymentNo') + ' tercatat. Status klaim → ' + CLAIM_LABELS[res.claimStatus] + '. Dibayar ' + formatRp(res.totalPaid) + ' dari gap ' + formatRp(res.gap) + '.'
     toast('Pembayaran tercatat.', 'success')
     pay.value.amount = 0
     pay.value.transferRef = ''
@@ -221,7 +221,7 @@ async function record() {
 }
 
 async function undo(p) {
-  if (!confirm('Undo pembayaran ' + p.id + '? Status klaim akan dikembalikan (tercatat di audit).')) return
+  if (!confirm('Undo pembayaran ' + docNo(p, 'paymentNo') + '? Status klaim akan dikembalikan (tercatat di audit).')) return
   try {
     await api('payments/' + p.id, { method: 'DELETE' })
     toast('Pembayaran dibatalkan (undo).', 'success')
@@ -273,7 +273,7 @@ async function pickLine(l) {
 async function confirm(force) {
   try {
     const res = await api('bank-lines/' + selLine.value.id + '/confirm', { method: 'POST', body: { claimId: confirmClaimId.value, force } })
-    toast('Ter Rekonsiliasi → pembayaran ' + res.payment.id + ' dibuat, status klaim → ' + CLAIM_LABELS[res.claimStatus] + '.', 'success')
+    toast('Ter Rekonsiliasi → pembayaran ' + docNo(res.payment, 'paymentNo') + ' dibuat, status klaim → ' + CLAIM_LABELS[res.claimStatus] + '.', 'success')
     confirmWarns.value = []
     await loadLines()
     await loadPayments()

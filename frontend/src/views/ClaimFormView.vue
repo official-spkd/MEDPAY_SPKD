@@ -1,6 +1,6 @@
 <template>
   <main class="page">
-    <PageHeader icon="file" :title="isEdit ? 'Edit Klaim ' + form.id : 'Klaim COB Baru'" sub="Struktur field mengikuti form e-Klaim INA-CBG. Klaim baru berstatus Draft. LOS dihitung otomatis; PBI tidak eligible COB.">
+    <PageHeader icon="file" :title="isEdit ? 'Edit Klaim ' + docNo(form) : 'Klaim COB Baru'" sub="Struktur field mengikuti form e-Klaim INA-CBG. Klaim baru berstatus Draft. LOS dihitung otomatis; PBI tidak eligible COB.">
       <template #actions>
         <router-link to="/claims" class="btn btn-outline btn-sm">‹ Daftar Klaim</router-link>
       </template>
@@ -51,27 +51,25 @@
         <div class="field">
           <label>Jenis Peserta <span class="req">*</span></label>
           <select class="input" v-model="form.participantType">
-            <option value="NON_PBI">Non-PBI (eligible COB)</option>
-            <option value="PBI">PBI — tidak eligible COB</option>
+            <option v-for="o in refOptions('participant_type')" :key="o.code" :value="o.code">{{ o.label }}</option>
           </select>
           <div class="hint" v-if="form.participantType === 'PBI'" style="color:var(--danger)">PBI tidak dapat diajukan sebagai COB — scrubber R03 akan memblokir.</div>
         </div>
         <div class="field">
           <label>Jenis Rawat <span class="req">*</span></label>
           <select class="input" v-model="form.careType">
-            <option value="RAWAT_INAP">Rawat Inap</option>
-            <option value="RAWAT_JALAN">Rawat Jalan</option>
+            <option v-for="o in refOptions('care_type')" :key="o.code" :value="o.code">{{ o.label }}</option>
           </select>
         </div>
         <div class="field">
           <label>Kelas Rawat <span class="req">*</span></label>
           <select class="input" v-model="form.careClass">
-            <option>I</option><option>II</option><option>III</option>
+            <option v-for="o in refOptions('care_class')" :key="o.code" :value="o.code">{{ o.code }}</option>
           </select>
         </div>
         <div class="field">
           <label>Jenis Kelamin <span class="req">*</span></label>
-          <select class="input" v-model="form.sex"><option value="L">Laki-laki</option><option value="P">Perempuan</option></select>
+          <select class="input" v-model="form.sex"><option v-for="o in refOptions('sex')" :key="o.code" :value="o.code">{{ o.label }}</option></select>
         </div>
         <div class="field">
           <label>Tanggal Lahir <span class="req">*</span></label>
@@ -131,7 +129,8 @@
       <div class="card-title">Tarif — Resolusi INA-CBG &amp; Komponen RS</div>
       <div class="card-sub">“Resolve INA-CBG Tariff” memanggil grouper e-Klaim melalui adapter (demo deterministik — bukan integrasi nyata).</div>
       <div class="chips-row" style="margin-bottom:14px">
-        <button class="btn btn-teal btn-sm" :disabled="resolving" @click="resolveTariff" v-if="hasPerm('RESOLVE') || isEdit === false"><span v-if="resolving" class="spin" /> Resolve Tarif INA-CBG</button>
+        <button class="btn btn-teal btn-sm" :disabled="resolving" @click="resolveTariff" v-if="hasPerm('RESOLVE')"><span v-if="resolving" class="spin" /> Resolve Tarif INA-CBG</button>
+        <span v-else class="hint">Resolusi tarif INA-CBG dilakukan Coder/Admin RS (izin RESOLVE) dari detail klaim setelah disimpan.</span>
         <span v-if="form.inacbgCode" class="code-chip">{{ form.inacbgCode }} — {{ form.inacbgDescription }} · {{ formatRp(form.inacbgBaseTariff) }}</span>
       </div>
       <div class="alert danger" v-if="resolveErr"><span>⛔</span><span>Grouper gagal: <b>{{ resolveErr }}</b> — {{ resolveErr === 'EKLAIM_CONFIG_MISSING' ? 'konfigurasi e-Klaim RS belum tersedia (atur di Pengaturan).' : 'kombinasi diagnosa tidak dapat digrouping.' }}</span></div>
@@ -199,7 +198,7 @@
         <div class="field">
           <label>Jenis Perlindungan</label>
           <select class="input" v-model="form.coverageType">
-            <option>Naik Kelas</option><option>Selisih Kelas</option><option>Manfaat Rawat Inap</option><option>Komersial Umum</option>
+            <option v-for="o in refOptions('coverage_type')" :key="o.code" :value="o.code">{{ o.label }}</option>
           </select>
           <div class="hint" v-if="form.careClass === 'III' && form.coverageType.toLowerCase().includes('selisih kelas')" style="color:var(--warning)">Kelas III + manfaat selisih kelas → scrubber R12 memberi peringatan.</div>
         </div>
@@ -231,7 +230,7 @@ import { state, hasPerm, toast, loadBoot } from '../store'
 import MoneyInput from '../components/MoneyInput.vue'
 import PageHeader from '../components/PageHeader.vue'
 import SearchSelect from '../components/SearchSelect.vue'
-import { formatRp, sumTariff, sumCmg, parseMoney, addDays } from '../format'
+import { formatRp, sumTariff, sumCmg, parseMoney, addDays, docNo, refOptions } from '../format'
 
 const route = useRoute()
 const router = useRouter()

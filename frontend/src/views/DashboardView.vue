@@ -93,12 +93,12 @@
               <div class="ico">🗓</div><div class="t">Aman</div>
               <div class="d">Tidak ada klaim dalam window deadline.</div>
             </div>
-            <div v-for="(w, i) in warnItems" :key="i" class="radar-item" @click="$router.push('/claims?q=' + w.id)">
+            <div v-for="(w, i) in warnItems" :key="i" class="radar-item" @click="$router.push('/claims?open=' + w.id + '&q=' + encodeURIComponent(w.no))">
               <div class="ri-top">
                 <div class="ri-title">{{ w.title }}</div>
                 <span class="badge" :class="w.sev === 'Tinggi' ? 'danger' : 'warning'"><Icon name="x" :size="10" /> {{ w.sev }}</span>
               </div>
-              <div class="ri-meta"><span class="mono">{{ w.id }}</span> · {{ w.meta }}</div>
+              <div class="ri-meta"><span class="mono">{{ w.no }}</span> · {{ w.meta }}</div>
             </div>
           </div>
         </div>
@@ -196,8 +196,8 @@
             <table class="tbl" style="min-width:460px">
               <thead><tr><th>Klaim</th><th>Pasien</th><th>Deadline</th><th>Sisa</th></tr></thead>
               <tbody>
-                <tr v-for="c in d.nearDeadlineClaims" :key="c.id" @click="$router.push('/claims?q=' + c.id)">
-                  <td class="mono">{{ c.id }}</td>
+                <tr v-for="c in d.nearDeadlineClaims" :key="c.id" @click="$router.push('/claims?open=' + c.id + '&q=' + encodeURIComponent(docNo(c)))">
+                  <td class="mono">{{ docNo(c) }}</td>
                   <td>{{ c.patientName }}</td>
                   <td>{{ formatDate(c.deadline) }}</td>
                   <td><span class="badge" :class="c.zone === 'lewat' ? 'danger' : c.zone === 'kritis' ? 'danger' : 'warning'">
@@ -217,7 +217,7 @@
               <tbody>
                 <tr v-for="p in d.recentPayments" :key="p.id" @click="$router.push('/payments')">
                   <td>{{ formatDate(p.receivedDate) }}</td>
-                  <td class="mono">{{ p.claimId }}</td>
+                  <td class="mono">{{ p.claimNo || p.claimId }}</td>
                   <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ p.payer }}</td>
                   <td class="num" style="font-weight:700">{{ formatRp(p.amount) }}</td>
                 </tr>
@@ -240,7 +240,7 @@ import Empty from '../components/Empty.vue'
 import BarChart from '../components/BarChart.vue'
 import Donut from '../components/Donut.vue'
 import Icon from '../components/Icon.vue'
-import { formatRp, formatRpShort, formatDate, formatNumber, CLAIM_LABELS } from '../format'
+import { formatRp, formatRpShort, formatDate, formatNumber, CLAIM_LABELS, docNo } from '../format'
 
 const d = ref(null)
 const loading = ref(true)
@@ -314,6 +314,7 @@ const warnItems = computed(() => {
   if (!d.value) return []
   return (d.value.nearDeadlineClaims || []).slice(0, 4).map(c => ({
     id: c.id,
+    no: docNo(c),
     title: `${c.patientName} — ${c.zone === 'lewat' ? 'melewati batas pengajuan' : 'mendekati batas 6 bulan'}`,
     meta: `Pemicu: deadline_info ≤ 30 hari → sisa ${c.zone === 'lewat' ? 'lewat ' + Math.abs(c.daysLeft) : c.daysLeft} hari`,
     sev: (c.zone === 'lewat' || c.zone === 'kritis') ? 'Tinggi' : 'Sedang',

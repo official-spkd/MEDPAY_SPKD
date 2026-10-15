@@ -39,12 +39,12 @@
           <thead><tr><th>Intake</th><th>Partner / RS</th><th>Pasien / SEP</th><th>INA-CBG</th><th class="num">Gap</th><th>Status</th><th class="num">Latensi</th><th>Waktu</th></tr></thead>
           <tbody>
             <tr v-for="i in filtered" :key="i.id" @click="sel = i">
-              <td class="mono">{{ i.id }}</td>
+              <td class="mono">{{ docNo(i, 'intakeNo') }}</td>
               <td style="font-size:12px">{{ partnerName(i.partnerId) }}<br /><span style="color:var(--text-muted)">{{ hospName(i.hospitalId) }}</span></td>
               <td>{{ i.patientName }}<div class="mono" style="font-size:11px;color:var(--text-muted)">{{ i.sepNo }}</div></td>
               <td><span class="code-chip" v-if="i.inacbgCode">{{ i.inacbgCode }}</span><span v-else class="badge danger">{{ i.errorCode }}</span></td>
               <td class="num" style="font-weight:700" :style="{ color: i.gap > 0 ? 'var(--success)' : 'var(--text-muted)' }">{{ formatRpShort(i.gap) }}</td>
-              <td><span class="badge" :class="i.status === 'RESOLVED' ? 'success' : 'danger'">{{ i.status }}</span></td>
+              <td><span class="badge" :class="refTone('intake_status', i.status, 'danger')">{{ refLabel('intake_status', i.status) }}</span></td>
               <td class="num">{{ i.latencyMs }} ms</td>
               <td style="font-size:11.5px;color:var(--text-muted)">{{ formatDateTime(i.at) }}</td>
             </tr>
@@ -82,7 +82,7 @@ import Kpi from '../components/Kpi.vue'
 import PageHeader from '../components/PageHeader.vue'
 import Empty from '../components/Empty.vue'
 import Modal from '../components/Modal.vue'
-import { formatRp, formatRpShort, formatDateTime, downloadBlobCsv } from '../format'
+import { formatRp, formatRpShort, formatDateTime, downloadBlobCsv, docNo, refLabel, refTone } from '../format'
 
 const s = ref(null)
 const busy = ref(false)
@@ -116,7 +116,7 @@ function applyFilter() { /* computed filter */ }
 
 function exportCsv() {
   const rows = [['ID', 'Partner', 'RS', 'SEP', 'Pasien', 'INA-CBG', 'Tagihan RS', 'JKN', 'Gap', 'Status', 'Error', 'Latensi']]
-  for (const i of filtered.value) rows.push([i.id, partnerName(i.partnerId), hospName(i.hospitalId), i.sepNo, i.patientName, i.inacbgCode, i.hospitalTotal, i.jknTotal, i.gap, i.status, i.errorCode, i.latencyMs])
+  for (const i of filtered.value) rows.push([docNo(i, 'intakeNo'), partnerName(i.partnerId), hospName(i.hospitalId), i.sepNo, i.patientName, i.inacbgCode, i.hospitalTotal, i.jknTotal, i.gap, i.status, i.errorCode, i.latencyMs])
   downloadBlobCsv('engine-api-intake.csv', rows)
 }
 

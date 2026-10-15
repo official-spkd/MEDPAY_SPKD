@@ -44,8 +44,8 @@
         <table class="tbl" style="min-width:520px">
           <thead><tr><th>Klaim</th><th>Pasien</th><th>Deadline</th><th>Sisa</th><th></th></tr></thead>
           <tbody>
-            <tr v-for="c in a.deadlineWindow" :key="c.id" @click="$router.push('/claims?q=' + c.id)">
-              <td class="mono">{{ c.id }}</td>
+            <tr v-for="c in a.deadlineWindow" :key="c.id" @click="$router.push('/claims?open=' + c.id + '&q=' + encodeURIComponent(docNo(c)))">
+              <td class="mono">{{ docNo(c) }}</td>
               <td>{{ c.patientName }}</td>
               <td>{{ formatDate(c.deadline) }}</td>
               <td><span class="badge" :class="c.critical ? 'danger' : 'warning'">{{ c.daysLeft >= 0 ? c.daysLeft + ' hari' : 'lewat' }}</span></td>
@@ -68,7 +68,7 @@ import PageHeader from '../components/PageHeader.vue'
 import LineChart from '../components/LineChart.vue'
 import Donut from '../components/Donut.vue'
 import Empty from '../components/Empty.vue'
-import { formatRp, formatRpShort, formatDate, formatNumber } from '../format'
+import { formatRp, formatRpShort, formatDate, formatNumber, docNo } from '../format'
 
 const a = ref({})
 

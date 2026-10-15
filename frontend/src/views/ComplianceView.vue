@@ -27,7 +27,7 @@
             <td style="font-size:12px">{{ r.module }}<div style="font-size:11px;color:var(--text-muted)">{{ r.feature }}</div></td>
             <td style="font-size:12px;white-space:nowrap">{{ formatDate(r.effectiveDate) }}</td>
             <td>
-              <span class="badge" :class="r.status === 'TERVERIFIKASI' ? 'success' : r.status === 'PERLU_VERIFIKASI' ? 'warning' : 'neutral'">{{ r.status }}</span>
+              <span class="badge" :class="refTone('regulation_status', r.status)">{{ refLabel('regulation_status', r.status) }}</span>
             </td>
             <td style="font-size:11.5px">{{ formatDate(r.lastReviewed) }}<div style="color:var(--text-muted)">{{ r.reviewer }}</div></td>
           </tr>
@@ -43,7 +43,7 @@ import { computed, onMounted } from 'vue'
 import { state, loadBoot } from '../store'
 import Kpi from '../components/Kpi.vue'
 import PageHeader from '../components/PageHeader.vue'
-import { formatDate } from '../format'
+import { formatDate, refLabel, refTone } from '../format'
 
 const regs = computed(() => state.boot?.regulations || [])
 function count(s) { return regs.value.filter(r => r.status === s).length }

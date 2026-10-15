@@ -14,8 +14,7 @@
       </select>
       <select class="input" v-model="careType" @change="load(1)">
         <option value="">Semua Jenis Rawat</option>
-        <option value="RAWAT_INAP">Rawat Inap</option>
-        <option value="RAWAT_JALAN">Rawat Jalan</option>
+        <option v-for="o in refOptions('care_type')" :key="o.code" :value="o.code">{{ o.label }}</option>
       </select>
       <span style="color:var(--text-muted);font-size:12.5px">{{ total }} klaim</span>
     </div>
@@ -31,12 +30,12 @@
         <tbody>
           <tr v-for="c in rows" :key="c.id" @click="openDetail(c.id)">
             <td>
-              <div class="mono" style="font-weight:700">{{ c.id }}</div>
+              <div class="mono" style="font-weight:700">{{ docNo(c) }}</div>
               <div class="mono" style="color:var(--text-muted);font-size:11px">{{ c.sepNo }}</div>
             </td>
             <td>
               <div style="font-weight:600">{{ c.patientName }}</div>
-              <div style="color:var(--text-muted);font-size:11.5px">{{ c.mrn }} · {{ c.sex === 'L' ? 'Laki-laki' : 'Perempuan' }}</div>
+              <div style="color:var(--text-muted);font-size:11.5px">{{ c.mrn }} · {{ refLabel('sex', c.sex) }}</div>
             </td>
             <td style="font-size:12px">{{ careLabel(c.careType) }}<br /><span style="color:var(--text-muted)">Kelas {{ c.careClass }} · LOS {{ c.los }} hr</span></td>
             <td><span class="code-chip" v-if="c.inacbgCode">{{ c.inacbgCode }}</span><span v-else style="color:var(--warning);font-size:12px">⚠ belum resolve</span></td>
@@ -61,7 +60,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api'
 import { state, hasPerm, loadBoot } from '../store'
@@ -70,7 +69,7 @@ import PageHeader from '../components/PageHeader.vue'
 import Icon from '../components/Icon.vue'
 import ScoreRing from '../components/ScoreRing.vue'
 import ClaimDrawer from '../components/ClaimDrawer.vue'
-import { formatRpShort, sumTariff, jknTotal, CLAIM_LABELS, CLAIM_TONE, debounce } from '../format'
+import { formatRpShort, sumTariff, jknTotal, CLAIM_LABELS, CLAIM_TONE, debounce, docNo, refOptions, refLabel } from '../format'
 
 const route = useRoute()
 const rows = ref([])
@@ -104,14 +103,26 @@ async function load(p = 1) {
 
 function openDetail(id) { detailId.value = id }
 
-function careLabel(t) { return t === 'RAWAT_INAP' ? 'Rawat Inap' : 'Rawat Jalan' }
+function careLabel(t) { return refLabel('care_type', t) }
 function insurerName(id) { return state.boot?.insurers.find(i => i.id === id)?.name || '—' }
 function gapOf(c) { return sumTariff(c.hospitalTariff) - jknTotal(c.inacbgBaseTariff, c.specialCmg) }
 function gapTone(c) { const g = gapOf(c); return g < 0 ? 'var(--danger)' : g === 0 ? 'var(--text-muted)' : 'var(--success)' }
 
+function applyQuery() {
+  if (route.query.q) { q.value = String(route.query.q); status.value = String(route.query.status || '') }
+  if (route.query.open) detailId.value = String(route.query.open)
+}
+
 onMounted(async () => {
   await loadBoot()
-  if (route.query.q) { q.value = String(route.query.q); status.value = String(route.query.status || '') }
+  applyQuery()
+  load(1)
+})
+
+// Tautan dari pencarian global / notifikasi saat halaman ini sudah terbuka.
+watch(() => route.query, (nq, oq) => {
+  if (nq.open === oq?.open && nq.q === oq?.q) return
+  applyQuery()
   load(1)
 })
 </script>

@@ -13,7 +13,7 @@
             <thead><tr><th>Batch</th><th>Periode</th><th class="num">Klaim</th><th class="num">Total Gap</th><th>Dibuat</th><th></th></tr></thead>
             <tbody>
               <tr v-for="b in batches" :key="b.batch.id" @click="select(b.batch.id)" :style="selected === b.batch.id ? 'background:var(--teal-bg)' : ''">
-                <td><b>{{ b.batch.name }}</b><div style="font-size:11.5px;color:var(--text-muted)">{{ b.batch.note || '—' }}</div></td>
+                <td><b>{{ b.batch.name }}</b> <span class="mono" style="font-size:11px;color:var(--text-muted)">{{ docNo(b.batch, 'batchNo') }}</span><div style="font-size:11.5px;color:var(--text-muted)">{{ b.batch.note || '—' }}</div></td>
                 <td>{{ b.batch.period }}</td>
                 <td class="num">{{ b.claimCount }}</td>
                 <td class="num" style="font-weight:700">{{ formatRpShort(b.totalGap) }}</td>
@@ -31,6 +31,7 @@
         <div class="card-sub">Periode {{ detail.batch.period }} · {{ detail.claims.length }} klaim · Total gap {{ formatRp(detail.totalGap) }} <span v-if="detail.blockerHits" style="color:var(--danger)">· {{ detail.blockerHits }} klaim ber-blocker</span></div>
         <div class="chips-row" style="margin-bottom:12px">
           <button class="btn btn-outline btn-sm" @click="showAdd = true" v-if="hasPerm('EDIT')">+ Tambah Klaim</button>
+          <button class="btn btn-teal btn-sm" v-if="hasPerm('APPROVE') && readyCount" :disabled="busy" @click="submitAll">Ajukan Semua ({{ readyCount }})</button>
           <button class="btn btn-outline btn-sm" @click="exportCsv">Ekspor CSV</button>
           <button class="btn btn-outline btn-sm" @click="exportPdf">Ekspor PDF (landscape)</button>
         </div>
@@ -39,7 +40,7 @@
             <thead><tr><th>Klaim</th><th>Pasien</th><th>Status</th><th class="num">Gap</th><th></th></tr></thead>
             <tbody>
               <tr v-for="c in detail.claims" :key="c.id">
-                <td class="mono">{{ c.id }}</td>
+                <td class="mono">{{ docNo(c) }}</td>
                 <td>{{ c.patientName }}</td>
                 <td><span class="badge" :class="CLAIM_TONE[c.status]">{{ CLAIM_LABELS[c.status] }}</span></td>
                 <td class="num">{{ formatRpShort(gapOf(c)) }}</td>
@@ -48,7 +49,7 @@
             </tbody>
           </table>
         </div>
-        <div class="note-strip">Ekspor CSV memuat seluruh 18 komponen tarif agar penerima dapat memverifikasi rantai tarif: INA-CBG → Top Up → Tarif JKN → Tagihan RS → Gap. PDF landscape: pratinjau demo (generator server menyusul).</div>
+        <div class="note-strip">Ekspor CSV memuat seluruh 18 komponen tarif agar penerima dapat memverifikasi rantai tarif: INA-CBG → Top Up → Tarif JKN → Tagihan RS → Gap. PDF landscape dibuat lewat dialog cetak browser (pilih "Simpan sebagai PDF").</div>
       </div>
       <div class="card card-pad" v-else>
         <Empty icon="←" title="Pilih batch" desc="Klik baris batch untuk melihat detail, menambah/mengeluarkan klaim, dan mengekspor." />
@@ -78,8 +79,8 @@
           <thead><tr><th></th><th>Klaim</th><th>Pasien</th><th>Penjamin</th><th class="num">Gap</th><th>Kesiapan</th></tr></thead>
           <tbody>
             <tr v-for="c in detail.unbatched" :key="c.id">
-              <td><input type="checkbox" v-model="addSel" :value="c.id" :aria-label="'Pilih ' + c.id" /></td>
-              <td class="mono">{{ c.id }}</td>
+              <td><input type="checkbox" v-model="addSel" :value="c.id" :aria-label="'Pilih ' + docNo(c)" /></td>
+              <td class="mono">{{ docNo(c) }}</td>
               <td>{{ c.patientName }}</td>
               <td style="font-size:12px">{{ insurerName(c.insurerId) }}</td>
               <td class="num">{{ formatRpShort(gapOf(c)) }}</td>
@@ -106,7 +107,7 @@ import PageHeader from '../components/PageHeader.vue'
 import Icon from '../components/Icon.vue'
 import Empty from '../components/Empty.vue'
 import ScoreRing from '../components/ScoreRing.vue'
-import { formatRp, formatRpShort, formatDate, sumTariff, jknTotal, CLAIM_LABELS, CLAIM_TONE, downloadBlobCsv } from '../format'
+import { formatRp, formatRpShort, formatDate, sumTariff, jknTotal, CLAIM_LABELS, CLAIM_TONE, downloadBlobCsv, docNo } from '../format'
 
 const batches = ref([])
 const selected = ref('')
@@ -130,7 +131,7 @@ async function create() {
   busy.value = true
   try {
     const b = await api('batches', { method: 'POST', body: newBatch.value })
-    toast('Batch ' + b.id + ' dibuat.', 'success')
+    toast('Batch ' + docNo(b, 'batchNo') + ' dibuat.', 'success')
     showNew.value = false
     newBatch.value = { name: '', period: '', hospitalId: state.user?.hospitalId || '', note: '' }
     selected.value = b.id
@@ -164,15 +165,47 @@ function askDelete(id) {
 function exportCsv() {
   const rows = [['ID', 'SEP', 'Pasien', 'Penjamin', 'Kode INA-CBG', 'Tarif Murni', 'Top Up', 'Total JKN', 'Total RS', 'Gap']]
   for (const c of detail.value.claims) {
-    rows.push([c.id, c.sepNo, c.patientName, insurerName(c.insurerId), c.inacbgCode || '',
+    rows.push([docNo(c), c.sepNo, c.patientName, insurerName(c.insurerId), c.inacbgCode || '',
       c.inacbgBaseTariff, Object.values(c.specialCmg).reduce((a, b) => a + b, 0),
       jknTotal(c.inacbgBaseTariff, c.specialCmg), sumTariff(c.hospitalTariff), gapOf(c)])
   }
-  downloadBlobCsv('batch-' + detail.value.batch.id + '.csv', rows)
+  downloadBlobCsv('batch-' + docNo(detail.value.batch, 'batchNo') + '.csv', rows)
 }
 
+const readyCount = computed(() => (detail.value?.claims || []).filter(c => c.status === 'ready_to_submit').length)
+
+// F-BAT-04: ajukan seluruh klaim Siap Diajukan di batch (maker-checker dicek backend).
+async function submitAll() {
+  if (!confirm('Ajukan ' + readyCount.value + ' klaim Siap Diajukan di batch ini ke penjamin? Tindakan tercatat di audit trail.')) return
+  busy.value = true
+  try {
+    const res = await api('batches/' + selected.value + '/submit', { method: 'POST' })
+    const skip = res.skipped || []
+    toast(res.submitted.length + ' klaim diajukan' + (skip.length ? ', ' + skip.length + ' dilewati: ' + skip.map(s => (s.claimNo || s.id) + ' (' + s.reason + ')').join('; ') : '.'), skip.length ? 'warning' : 'success', 7000)
+    await load()
+  } catch (e) { toast(e.message, 'error') } finally { busy.value = false }
+}
+
+// Ekspor PDF: dokumen batch landscape A4 dibuka di jendela cetak browser (Simpan sebagai PDF).
 function exportPdf() {
-  toast('Ekspor PDF landscape A4 — pratinjau demo. Implementasi generator PDF server tersedia pada fase berikutnya.', 'info')
+  const b = detail.value.batch
+  const esc = (v) => String(v ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]))
+  const rows = detail.value.claims.map(c => `<tr><td>${esc(docNo(c))}</td><td>${esc(c.sepNo)}</td><td>${esc(c.patientName)}</td>
+    <td>${esc(insurerName(c.insurerId))}</td><td>${esc(c.inacbgCode || '-')}</td><td class="n">${esc(formatRp(jknTotal(c.inacbgBaseTariff, c.specialCmg)))}</td>
+    <td class="n">${esc(formatRp(sumTariff(c.hospitalTariff)))}</td><td class="n">${esc(formatRp(gapOf(c)))}</td></tr>`).join('')
+  const w = window.open('', '_blank')
+  if (!w) { toast('Pop-up diblokir browser — izinkan pop-up untuk mengekspor PDF.', 'warning'); return }
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Batch ${esc(docNo(b, 'batchNo'))}</title>
+    <style>@page{size:A4 landscape;margin:12mm}body{font-family:Arial,sans-serif;font-size:11px;color:#111}
+    h1{font-size:16px;margin:0 0 4px}table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{border:1px solid #999;padding:4px 6px;text-align:left}th{background:#eee}.n{text-align:right}</style></head>
+    <body><h1>${esc(b.name)} (${esc(docNo(b, 'batchNo'))})</h1>
+    <div>Periode ${esc(b.period)} · ${detail.value.claims.length} klaim · Total gap ${esc(formatRp(detail.value.totalGap))}</div>
+    <table><thead><tr><th>Klaim</th><th>SEP</th><th>Pasien</th><th>Penjamin</th><th>INA-CBG</th><th class="n">Tarif JKN</th>
+    <th class="n">Tagihan RS</th><th class="n">Gap</th></tr></thead><tbody>${rows}</tbody></table></body></html>`)
+  w.document.close()
+  w.focus()
+  w.print()
 }
 
 onMounted(async () => {

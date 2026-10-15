@@ -1651,6 +1651,7 @@ var seedResumeItems = []seedResumeItem{
 		Satuan:       "kali",
 		HargaSatuan:  916000,
 		Subtotal:     1832000,
+		Reviewed:     true,
 	},
 	{
 		ClaimID:      "CLM-0028",
@@ -1664,6 +1665,7 @@ var seedResumeItems = []seedResumeItem{
 		Satuan:       "kali",
 		HargaSatuan:  1006000,
 		Subtotal:     1006000,
+		Reviewed:     true,
 	},
 	{
 		ClaimID:      "CLM-0028",

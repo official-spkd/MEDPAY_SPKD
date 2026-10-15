@@ -57,8 +57,8 @@
         <table class="tbl" style="min-width:640px">
           <thead><tr><th>Klaim</th><th>Pasien</th><th>Penjamin</th><th>Status</th><th class="num">Tertunggak</th><th class="num">Umur</th></tr></thead>
           <tbody>
-            <tr v-for="r in a.drilldown || []" :key="r.id" @click="$router.push('/claims?q=' + r.id)">
-              <td class="mono">{{ r.id }}</td>
+            <tr v-for="r in a.drilldown || []" :key="r.id" @click="$router.push('/claims?open=' + r.id + '&q=' + encodeURIComponent(docNo(r)))">
+              <td class="mono">{{ docNo(r) }}</td>
               <td>{{ r.patientName }}</td>
               <td style="font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.insurer }}</td>
               <td><span class="badge" :class="CLAIM_TONE[r.status]">{{ CLAIM_LABELS[r.status] }}</span></td>
@@ -81,7 +81,7 @@ import Kpi from '../components/Kpi.vue'
 import PageHeader from '../components/PageHeader.vue'
 import BarChart from '../components/BarChart.vue'
 import Empty from '../components/Empty.vue'
-import { formatRp, formatRpShort, CLAIM_LABELS, CLAIM_TONE, downloadBlobCsv } from '../format'
+import { formatRp, formatRpShort, CLAIM_LABELS, CLAIM_TONE, downloadBlobCsv, docNo } from '../format'
 
 const a = ref({})
 const basis = ref('submission')
@@ -98,7 +98,7 @@ function rateColor(r) { return r >= 80 ? 'var(--success)' : r >= 60 ? 'var(--war
 
 function exportCsv() {
   const rows = [['Klaim', 'Pasien', 'Penjamin', 'Status', 'Tertunggak', 'Umur (hari)']]
-  for (const r of a.value.drilldown || []) rows.push([r.id, r.patientName, r.insurer, CLAIM_LABELS[r.status], r.amount, r.ageDays])
+  for (const r of a.value.drilldown || []) rows.push([docNo(r), r.patientName, r.insurer, CLAIM_LABELS[r.status], r.amount, r.ageDays])
   downloadBlobCsv('piutang-medpay.csv', rows)
 }
 

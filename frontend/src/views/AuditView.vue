@@ -28,8 +28,7 @@
       <input class="input search-input" v-model="q" placeholder="Cari aktor / aksi / ID / IP…" @input="load(1)" />
       <select class="input" v-model="scope" @change="load(1)">
         <option value="">Semua Scope</option>
-        <option value="WEB">WEB (aksi pengguna)</option>
-        <option value="ENGINE_API">ENGINE_API (partner)</option>
+        <option v-for="o in refOptions('audit_scope')" :key="o.code" :value="o.code">{{ o.label }}</option>
       </select>
       <label style="display:flex;gap:6px;align-items:center;font-size:12.5px">
         <input type="checkbox" v-model="failedOnly" @change="load(1)" /> Hanya gagal (≥400)
@@ -71,7 +70,7 @@ import { toast } from '../store'
 import Kpi from '../components/Kpi.vue'
 import PageHeader from '../components/PageHeader.vue'
 import Empty from '../components/Empty.vue'
-import { formatDateTime, downloadBlobCsv, debounce } from '../format'
+import { formatDateTime, downloadBlobCsv, debounce, refOptions } from '../format'
 
 const rows = ref([])
 const sum = ref({})

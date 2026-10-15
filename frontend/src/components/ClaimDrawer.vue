@@ -5,7 +5,7 @@
       <div class="drawer-head" v-if="d">
         <div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <h3 style="font-size:17px">{{ d.claim.id }}</h3>
+            <h3 style="font-size:17px">{{ docNo(d.claim) }}</h3>
             <span class="badge" :class="CLAIM_TONE[d.claim.status]">{{ CLAIM_LABELS[d.claim.status] }}</span>
             <ScoreRing :score="d.claim.readinessScore" with-label />
           </div>
@@ -28,11 +28,11 @@
         <div v-if="tab === 'ringkasan'">
           <div class="kv">
             <span class="k">RS / Kode Faskes</span><span class="v">{{ d.hospital?.name }} ({{ d.hospital?.kodeFaskes }})</span>
-            <span class="k">Jenis Peserta</span><span class="v">{{ d.claim.participantType === 'PBI' ? 'PBI — tidak eligible COB' : 'Non-PBI' }}</span>
+            <span class="k">Jenis Peserta</span><span class="v">{{ refLabel('participant_type', d.claim.participantType) }}</span>
             <span class="k">No. Kartu BPJS</span><span class="v mono">{{ mask(d.claim.bpjsCardNo) }}</span>
             <span class="k">MRN</span><span class="v">{{ d.claim.mrn }}</span>
             <span class="k">DPJP</span><span class="v">{{ d.claim.dpjp }}</span>
-            <span class="k">Jenis Rawat</span><span class="v">{{ d.claim.careType === 'RAWAT_INAP' ? 'Rawat Inap' : 'Rawat Jalan' }} · Kelas {{ d.claim.careClass }}</span>
+            <span class="k">Jenis Rawat</span><span class="v">{{ refLabel('care_type', d.claim.careType) }} · Kelas {{ d.claim.careClass }}</span>
             <span class="k">Masuk → Pulang</span><span class="v">{{ formatDate(d.claim.admissionDate) }} → {{ formatDate(d.claim.dischargeDate) }} ({{ d.claim.los }} hari, otomatis)</span>
             <span class="k">Diagnosa Utama</span><span class="v mono">{{ d.claim.primaryDiagnosis }}</span>
             <span class="k">Diagnosa Sekunder</span><span class="v mono">{{ d.claim.secondaryDiagnoses.join(', ') || '—' }}</span>
@@ -131,7 +131,7 @@
               <thead><tr><th>ID</th><th>Tanggal</th><th class="num">Nominal</th><th>Payer</th><th>Ref</th><th>Oleh</th></tr></thead>
               <tbody>
                 <tr v-for="p in d.payments" :key="p.id">
-                  <td class="mono">{{ p.id }}</td>
+                  <td class="mono">{{ docNo(p, 'paymentNo') }}</td>
                   <td>{{ formatDate(p.receivedDate) }}</td>
                   <td class="num" style="font-weight:700">{{ formatRp(p.amount) }}</td>
                   <td>{{ p.payer }}</td>
@@ -166,7 +166,7 @@
             <div class="card-title">Riwayat Status (append-only)</div>
             <div v-for="(h, i) in [...d.claim.statusHistory].reverse()" :key="i" style="display:flex;gap:10px;padding:7px 0;border-bottom:1px dashed var(--border);font-size:12.5px">
               <span style="color:var(--text-muted);min-width:130px">{{ formatDateTime(h.at) }}</span>
-              <span><b>{{ h.actor }}</b>: {{ h.from ? h.from + ' → ' : '' }}{{ h.to }} {{ h.note ? '— ' + h.note : '' }}</span>
+              <span><b>{{ h.actor }}</b>: {{ h.from ? (CLAIM_LABELS[h.from] || h.from) + ' → ' : '' }}{{ CLAIM_LABELS[h.to] || h.to }} {{ h.note ? '— ' + h.note : '' }}</span>
             </div>
           </div>
         </div>
@@ -177,7 +177,7 @@
           <button class="btn" :class="transBtnClass(t)" @click="askTransition(t)">{{ transLabel(t) }}</button>
         </template>
         <router-link v-if="canEdit" :to="'/claims/' + d.claim.id + '/edit'" class="btn btn-outline">Edit Klaim</router-link>
-        <button v-if="hasPerm('DELETE') && d.claim.status === 'draft'" class="btn btn-danger" @click="askDelete">Hapus</button>
+        <button v-if="canDelete" class="btn btn-danger" @click="askDelete">Hapus</button>
         <span style="flex:1" />
         <span style="font-size:11px;color:var(--text-muted);align-self:center">Aksi diaudit (append-only)</span>
       </div>
@@ -226,7 +226,7 @@ import Modal from './Modal.vue'
 import Kpi from './Kpi.vue'
 import Empty from './Empty.vue'
 import ScoreRing from './ScoreRing.vue'
-import { formatRp, formatDate, formatDateTime, CLAIM_LABELS, CLAIM_TONE, COMPONENT_LABELS, TARIFF_COMPONENT_KEYS, SPECIAL_CMG_LABELS, SPECIAL_CMG_KEYS, sumTariff, jknTotal, RESUME_CATEGORIES } from '../format'
+import { formatRp, formatDate, formatDateTime, CLAIM_LABELS, CLAIM_TONE, COMPONENT_LABELS, TARIFF_COMPONENT_KEYS, SPECIAL_CMG_LABELS, SPECIAL_CMG_KEYS, sumTariff, jknTotal, RESUME_CATEGORIES, docNo, refLabel, refTone } from '../format'
 
 const props = defineProps({ claimId: String })
 const emit = defineEmits(['close', 'changed'])
@@ -245,7 +245,8 @@ const paidSum = computed(() => d.value ? d.value.payments.reduce((a, p) => a + p
 const resumeCount = computed(() => d.value?.resume.length || 0)
 const resumeReviewed = computed(() => d.value ? d.value.resume.filter(r => r.reviewed).length : 0)
 const allReviewed = computed(() => resumeCount.value > 0 && resumeReviewed.value === resumeCount.value)
-const canEdit = computed(() => hasPerm('EDIT') && d.value && ['draft', 'ready_to_submit', 'disputed'].includes(d.value.claim.status))
+const canEdit = computed(() => hasPerm('EDIT') && d.value && (d.value.editable ?? ['draft', 'ready_to_submit', 'disputed'].includes(d.value.claim.status)))
+const canDelete = computed(() => hasPerm('DELETE') && d.value && (d.value.deletable ?? d.value.claim.status === 'draft'))
 const canPay = computed(() => hasPerm('CREATE') && d.value && ['approved', 'partially_approved', 'partially_paid'].includes(d.value.claim.status))
 
 const TRANS_LABELS = {
@@ -273,15 +274,22 @@ const TRANS_PERM = {
   submitted: 'APPROVE', written_off: 'APPROVE', approved: 'VERIFY', partially_approved: 'VERIFY',
   rejected: 'VERIFY', disputed: 'REOPEN', ready_to_submit: 'EDIT', draft: 'EDIT',
 }
-const availableTrans = computed(() => d.value
-  ? (allowedTrans[d.value.claim.status] || []).filter(t => hasPerm(TRANS_PERM[t] || 'EDIT'))
-  : [])
-function transLabel(t) { return TRANS_LABELS[t] || t }
+// Backend mengirim `transitions` (aksi + izin + maker-checker) di detail klaim;
+// tabel lokal di atas hanya dipakai pada mode mock.
+const availableTrans = computed(() => {
+  if (!d.value) return []
+  if (Array.isArray(d.value.transitions)) return d.value.transitions.filter(t => t.allowed).map(t => t.to)
+  return (allowedTrans[d.value.claim.status] || []).filter(t => hasPerm(TRANS_PERM[t] || 'EDIT'))
+})
+function transInfo(t) { return d.value?.transitions?.find(x => x.to === t) }
+function transLabel(t) { return transInfo(t)?.label || TRANS_LABELS[t] || t }
 function transBtnClass(t) {
   return t === 'written_off' || t === 'rejected' ? 'btn-danger' : t === 'submitted' ? 'btn-teal' : 'btn-outline'
 }
 
 const deadline = computed(() => {
+  const c = d.value?.claim
+  if (c?.deadlineZone) return { deadline: c.deadline, daysLeft: c.deadlineDaysLeft, zone: c.deadlineZone }
   if (!d.value?.claim.admissionDate) return { deadline: '', daysLeft: 0, zone: 'aman' }
   const dl = new Date(d.value.claim.admissionDate + 'T00:00:00')
   dl.setMonth(dl.getMonth() + 6)
@@ -290,8 +298,8 @@ const deadline = computed(() => {
   const zone = days < 0 ? 'lewat' : days <= 7 ? 'kritis' : days <= 30 ? 'waspada' : 'aman'
   return { deadline: iso, daysLeft: days, zone }
 })
-const zoneTone = computed(() => ['lewat', 'kritis'].includes(deadline.value.zone) ? 'danger' : deadline.value.zone === 'waspada' ? 'warning' : 'success')
-const zoneLabel = computed(() => ({ aman: 'Aman', waspada: 'Waspada', kritis: 'Kritis', lewat: 'Lewat' })[deadline.value.zone])
+const zoneTone = computed(() => refTone('deadline_zone', deadline.value.zone, 'success'))
+const zoneLabel = computed(() => refLabel('deadline_zone', deadline.value.zone))
 
 function mask(s) { return s ? s.slice(0, 4) + '••••' + s.slice(-3) : '—' }
 function catLabel(k) { return RESUME_CATEGORIES.find(c => c.key === k)?.label || k }
@@ -314,7 +322,7 @@ async function resolveTariff() {
 function askTransition(t) {
   const c = d.value.claim
   if (t === 'submitted') {
-    confirmState.value = { title: 'Ajukan klaim?', desc: 'Klaim ' + c.id + ' akan berstatus Diajukan. Tindakan ini tercatat di audit trail. Memerlukan peran Reviewer/Admin (maker-checker).', action: () => doTransition(t) }
+    confirmState.value = { title: 'Ajukan klaim?', desc: 'Klaim ' + docNo(c) + ' akan berstatus Diajukan. Tindakan ini tercatat di audit trail. Memerlukan peran Reviewer/Admin (maker-checker).', action: () => doTransition(t) }
     return
   }
   if (t === 'rejected') {
@@ -395,7 +403,7 @@ function onCsv(ev) {
 function askDelete() {
   confirmState.value = {
     title: 'Hapus klaim permanen?',
-    desc: 'Klaim ' + d.value.claim.id + ' dan seluruh item resume medisnya akan dihapus permanen.',
+    desc: 'Klaim ' + docNo(d.value.claim) + ' dan seluruh item resume medisnya akan dihapus permanen.',
     danger: true,
     action: async () => {
       try {

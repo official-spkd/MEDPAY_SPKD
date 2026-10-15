@@ -16,7 +16,7 @@
             <thead><tr><th>Klaim</th><th>Pasien</th><th>Penjamin</th><th class="num">Tagihan</th><th class="num">BPJS</th><th class="num">Penjamin</th><th class="num">Pasien</th><th>Status</th></tr></thead>
             <tbody>
               <tr v-for="r in rows" :key="r.claimId">
-                <td class="mono">{{ r.claimId }}</td>
+                <td class="mono">{{ r.claimNo || r.claimId }}</td>
                 <td>{{ r.patientName }}</td>
                 <td style="font-size:12px;max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.insurer || '—' }}</td>
                 <td class="num">{{ formatRp(r.totalHospitalBill) }}</td>

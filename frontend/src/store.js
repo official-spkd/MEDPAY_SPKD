@@ -1,6 +1,7 @@
 // ── SPKD MedPay — Global state reaktif (tanpa library eksternal) ────────────
 import { reactive } from 'vue'
 import { api, getToken, setToken } from './api'
+import { applyReference } from './format'
 
 export const state = reactive({
   user: null,
@@ -38,6 +39,8 @@ export async function loadMe() {
 export async function loadBoot(force = false) {
   if (state.booted && !force) return
   state.boot = await api('bootstrap')
+  // Label, pilihan, dan pengaturan dari backend (tabel ref_codes / app_settings).
+  applyReference(state.boot.reference)
   state.booted = true
 }
 

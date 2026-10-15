@@ -326,7 +326,7 @@ func claimListHandler(db *gorm.DB) gin.HandlerFunc {
 				careType != "" && cl.CareType != careType,
 				batch == "none" && batchID != "",
 				batch != "" && batch != "none" && batchID != batch,
-				search != "" && !strings.Contains(strings.ToLower(cl.SEPNo+" "+cl.PatientName+" "+cl.MRN), search):
+				search != "" && !strings.Contains(strings.ToLower(cl.ClaimNo+" "+cl.SEPNo+" "+cl.PatientName+" "+cl.MRN), search):
 				continue
 			}
 			matched = append(matched, cl)

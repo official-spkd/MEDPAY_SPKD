@@ -13,7 +13,7 @@
       <div class="filterbar">
         <select class="input" v-model="claimId" @change="scrub" style="min-width:340px">
           <option value="">— pilih klaim untuk divalidasi —</option>
-          <option v-for="c in claims" :key="c.id" :value="c.id">{{ c.id }} — {{ c.patientName }} ({{ CLAIM_LABELS[c.status] }})</option>
+          <option v-for="c in claims" :key="c.id" :value="c.id">{{ docNo(c) }} — {{ c.patientName }} ({{ CLAIM_LABELS[c.status] }})</option>
         </select>
         <button class="btn btn-teal btn-sm" :disabled="!claimId || busy" @click="scrub"><span v-if="busy" class="spin" /> Jalankan Validasi</button>
       </div>
@@ -52,7 +52,7 @@
           <thead><tr><th>ID</th><th>Aturan</th><th>Kategori</th><th>Severity</th><th>Aktif</th><th>Sumber</th></tr></thead>
           <tbody>
             <tr v-for="r in rules" :key="r.id">
-              <td class="mono"><b>{{ r.id }}</b></td>
+              <td class="mono"><b>{{ r.code || r.id }}</b></td>
               <td>
                 <div style="font-weight:600">{{ r.name }}</div>
                 <div style="font-size:11.5px;color:var(--text-muted)">{{ r.message }}</div>
@@ -60,7 +60,7 @@
               <td><span class="badge neutral">{{ r.category }}</span></td>
               <td><span class="badge" :class="r.severity === 'BLOCKER' ? 'danger' : r.severity === 'WARNING' ? 'warning' : 'info'">{{ r.severity }}</span></td>
               <td>
-                <input type="checkbox" :checked="r.enabled" :disabled="!hasPerm('CONFIGURE')" @change="toggleRule(r, $event)" :aria-label="'Aktifkan ' + r.id" />
+                <input type="checkbox" :checked="r.enabled" :disabled="!hasPerm('CONFIGURE') || !!state.user?.hospitalId" :title="state.user?.hospitalId ? 'Aturan scrub berlaku untuk semua RS — hanya staf SPKD yang dapat mengubah' : ''" @change="toggleRule(r, $event)" :aria-label="'Aktifkan ' + (r.code || r.id)" />
               </td>
               <td style="font-size:11.5px;max-width:280px">{{ r.sourceRef }}</td>
             </tr>
@@ -108,7 +108,7 @@ import Kpi from '../components/Kpi.vue'
 import PageHeader from '../components/PageHeader.vue'
 import Empty from '../components/Empty.vue'
 import Modal from '../components/Modal.vue'
-import { CLAIM_LABELS } from '../format'
+import { CLAIM_LABELS, docNo } from '../format'
 
 const tab = ref('hasil')
 const claims = ref([])
@@ -141,7 +141,7 @@ async function toggleRule(r, ev) {
   try {
     await api('scrub-rules/' + r.id, { method: 'PUT', body: { enabled: ev.target.checked } })
     r.enabled = ev.target.checked
-    toast('Aturan ' + r.id + (ev.target.checked ? ' diaktifkan.' : ' dinonaktifkan.'), 'success')
+    toast('Aturan ' + (r.code || r.id) + (ev.target.checked ? ' diaktifkan.' : ' dinonaktifkan.'), 'success')
   } catch (e) { toast(e.message, 'error'); ev.target.checked = !ev.target.checked }
 }
 

@@ -33,7 +33,7 @@
                 :class="{ active: flatIndex('claim', i) === active }" @mouseenter="active = flatIndex('claim', i)" @click="goClaim(c)">
                 <span class="sm-item-ico claim"><Icon name="claims" :size="15" /></span>
                 <span class="sm-item-txt">
-                  <span class="sm-item-title">{{ c.patientName }} <span class="mono sm-mono">{{ c.id }}</span></span>
+                  <span class="sm-item-title">{{ c.patientName }} <span class="mono sm-mono">{{ docNo(c) }}</span></span>
                   <span class="sm-item-sub">SEP {{ c.sepNo }} · MRN {{ c.mrn }} · {{ insurerName(c.insurerId) }}</span>
                 </span>
                 <span class="badge sm-badge" :class="CLAIM_TONE[c.status]">{{ CLAIM_LABELS[c.status] }}</span>
@@ -75,7 +75,7 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import Icon from './Icon.vue'
 import { state, hasPerm } from '../store'
-import { CLAIM_LABELS, CLAIM_TONE } from '../format'
+import { CLAIM_LABELS, CLAIM_TONE, docNo } from '../format'
 
 const props = defineProps({ open: Boolean })
 const emit = defineEmits(['update:open'])
@@ -127,7 +127,7 @@ const claimResults = computed(() => {
   const hid = state.user?.hospitalId
   return state.boot.claims
     .filter(c => (!hid || c.hospitalId === hid) && (
-      c.id.toLowerCase().includes(s) || c.sepNo?.toLowerCase().includes(s) ||
+      docNo(c).toLowerCase().includes(s) || c.sepNo?.toLowerCase().includes(s) ||
       c.patientName.toLowerCase().includes(s) || c.mrn?.toLowerCase().includes(s)))
     .slice(0, 6)
 })
@@ -150,7 +150,7 @@ function move(dir) {
 function pickActive() { flatItems.value[active.value]?.() }
 
 function go(r) { close(); router.push(r.to) }
-function goClaim(c) { close(); router.push('/claims?q=' + encodeURIComponent(c.id)) }
+function goClaim(c) { close(); router.push('/claims?open=' + c.id + '&q=' + encodeURIComponent(docNo(c))) }
 function insurerName(id) { return state.boot?.insurers?.find(i => i.id === id)?.shortName || state.boot?.insurers?.find(i => i.id === id)?.name || '—' }
 function close() { emit('update:open', false) }
 

@@ -687,7 +687,7 @@ function handleClaimList({ user, query }) {
     if (careType && c.careType !== careType) continue
     if (batchId === 'none' && c.batchId) continue
     if (batchId && batchId !== 'none' && c.batchId !== batchId) continue
-    if (search && !(c.sepNo + ' ' + c.patientName + ' ' + c.mrn).toLowerCase().includes(search)) continue
+    if (search && !(c.id + ' ' + c.sepNo + ' ' + c.patientName + ' ' + c.mrn).toLowerCase().includes(search)) continue
     rows.push(withScrub(c, T))
   }
   const total = rows.length
@@ -1383,6 +1383,67 @@ function handleExportAudit() {
   return csvResponse('audit-medpay.csv', rows)
 }
 
+// ── Handler: endpoint tambahan backend (versi mock sederhana) ────────────────
+function handleChangePassword({ body }) {
+  if (body.currentPassword !== DEMO_PASSWORD) return fail(400, 'Kata sandi saat ini salah')
+  if (String(body.newPassword || '').length < 10) return fail(400, 'Kata sandi baru minimal 10 karakter')
+  return ok({ ok: true, message: 'Mode mock: kata sandi demo tetap ' + DEMO_PASSWORD })
+}
+function handleNotifRead({ params }) {
+  const n = db.notifications.find((x) => x.id === params[0])
+  if (!n) return fail(404, 'Notifikasi tidak ditemukan')
+  n.read = true
+  return ok({ ok: true })
+}
+function handleNotifReadAll() {
+  for (const n of db.notifications) n.read = true
+  return ok({ ok: true })
+}
+function handleBatchSubmit({ user, params }) {
+  const b = db.batches.find((x) => x.id === params[0])
+  if (!b || (user.hospitalId && b.hospitalId !== user.hospitalId)) return fail(404, 'Batch tidak ditemukan')
+  const submitted = [], skipped = []
+  for (const c of db.claims.filter((x) => x.batchId === b.id)) {
+    if (c.status !== 'ready_to_submit') { skipped.push({ id: c.id, claimNo: c.id, reason: 'status ' + c.status }); continue }
+    c.status = 'submitted'
+    c.submittedAt = nowStamp()
+    audit(user, 'TRANSITION', 'claim', c.id, 'ready_to_submit', 'submitted')
+    submitted.push(c.id)
+  }
+  return ok({ submitted, skipped })
+}
+function handleUserResetPassword({ user, params }) {
+  const u = userByID(params[0])
+  if (!u) return fail(404, 'Pengguna tidak ditemukan')
+  audit(user, 'RESET_PASSWORD', 'user', u.id, '', u.email)
+  return ok({ ok: true, tempPassword: DEMO_PASSWORD })
+}
+function handleInsurerCreate({ user, body }) {
+  if (!str(body.name)) return fail(400, 'Nama penjamin wajib diisi')
+  const n = {
+    id: nextID('INS'), name: str(body.name), type: str(body.type), avgPaymentDays: num(body.avgPaymentDays),
+    deadlineDays: num(body.deadlineDays), ceilingPolicy: str(body.ceilingPolicy), verified: !!body.verified,
+  }
+  db.insurers.push(n)
+  audit(user, 'CREATE_INSURER', 'insurer', n.id, '', n.name)
+  return ok(n, 201)
+}
+function handlePartnerRotate({ params }) {
+  const p = db.partners.find((x) => x.id === params[0])
+  if (!p) return fail(404, 'Partner tidak ditemukan')
+  const secret = 'cs_mock' + Math.random().toString(36).slice(2, 14)
+  p.consumerSecretMasked = 'cs_****' + secret.slice(-4)
+  return ok({ consumerId: p.consumerId, consumerSecret: secret, consumerSecretMasked: p.consumerSecretMasked })
+}
+function handlePartnerKey({ params, body }) {
+  const p = db.partners.find((x) => x.id === params[0])
+  if (!p) return fail(404, 'Partner tidak ditemukan')
+  const key = 'uk_mock' + Math.random().toString(36).slice(2, 14)
+  p.userKeyMasked = 'uk_****' + key.slice(-4)
+  return ok({ userKey: key, keyMasked: p.userKeyMasked, hospitalId: str(body.hospitalId), partnerId: p.id }, 201)
+}
+const handleReference = () => ok({})
+
 // ── Tabel rute ───────────────────────────────────────────────────────────────
 // [metode, pola, izin (null = hanya login, 'public' = tanpa login), handler]
 const ROUTES = [
@@ -1391,6 +1452,10 @@ const ROUTES = [
   ['POST', /^auth\/logout$/, 'public', handleLogout],
   ['GET', /^me$/, null, handleMe],
   ['GET', /^bootstrap$/, null, handleBootstrap],
+  ['GET', /^reference$/, null, handleReference],
+  ['POST', /^auth\/change-password$/, null, handleChangePassword],
+  ['PUT', /^notifications\/([^/]+)\/read$/, null, handleNotifRead],
+  ['POST', /^notifications\/read-all$/, null, handleNotifReadAll],
 
   ['GET', /^dashboard$/, 'VIEW', handleDashboard],
   ['GET', /^analytics$/, 'VIEW', handleAnalytics],
@@ -1420,6 +1485,7 @@ const ROUTES = [
   ['DELETE', /^batches\/([^/]+)$/, 'DELETE', handleBatchDelete],
   ['POST', /^batches\/([^/]+)\/claims$/, 'EDIT', handleBatchAddClaims],
   ['DELETE', /^batches\/([^/]+)\/claims\/([^/]+)$/, 'EDIT', handleBatchRemoveClaim],
+  ['POST', /^batches\/([^/]+)\/submit$/, 'APPROVE', handleBatchSubmit],
 
   ['GET', /^payments$/, 'VIEW', handlePaymentList],
   ['POST', /^payments$/, 'CREATE', handlePaymentCreate],
@@ -1446,6 +1512,10 @@ const ROUTES = [
   ['PUT', /^users\/([^/]+)$/, 'CONFIGURE', handleUserUpdate],
   ['PUT', /^insurers\/([^/]+)$/, 'CONFIGURE', handleInsurerUpdate],
   ['PUT', /^partners\/([^/]+)$/, 'CONFIGURE', handlePartnerUpdate],
+  ['POST', /^users\/([^/]+)\/reset-password$/, 'CONFIGURE', handleUserResetPassword],
+  ['POST', /^insurers$/, 'CONFIGURE', handleInsurerCreate],
+  ['POST', /^partners\/([^/]+)\/rotate-secret$/, 'CONFIGURE', handlePartnerRotate],
+  ['POST', /^partners\/([^/]+)\/keys$/, 'CONFIGURE', handlePartnerKey],
 
   ['GET', /^engine-api\/summary$/, 'VIEW', handleEngineApiSummary],
 

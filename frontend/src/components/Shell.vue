@@ -7,7 +7,7 @@
       </button>
     </div>
     <nav>
-      <div class="nav-group" v-for="g in groups" :key="g.label">
+      <div class="nav-group" v-for="g in groups" :key="g.label" v-show="g.items.some(i => !i.hidden)">
         <div class="nav-group-label">{{ g.label }}</div>
         <router-link v-for="it in g.items" :key="it.to" v-show="!it.hidden" :to="it.to" class="nav-item"
           :class="{ active: isActive(it.to) }">
@@ -34,25 +34,25 @@ import Logo from './Logo.vue'
 import Icon from './Icon.vue'
 import { state, hasPerm } from '../store'
 import { ROLE_LABELS } from '../format'
+import { canSeeEngine, canSeeMoney, canSeeValidation } from '../access'
 
 const route = useRoute()
 // Tutup sidebar mobile setiap kali pindah halaman
 watch(() => route.path, () => { state.sidebarMobileOpen = false })
 const isActive = (p) => route.path === p || (p !== '/' && route.path.startsWith(p))
-const canSeeEngine = computed(() => ['SUPER_ADMIN', 'IT_SIMRS', 'MANAGEMENT', 'AUDITOR'].includes(state.user?.role))
 const canConfigure = computed(() => hasPerm('CONFIGURE'))
 const roleLabel = computed(() => ROLE_LABELS[state.user?.role] || state.user?.role)
 
 // Badge hitung dari data boot (tanpa API tambahan)
+const scopeHid = computed(() => state.user?.hospitalId || state.hospitalFilter || '')
 const queueCount = computed(() => {
-  const wi = state.boot?.workItems || []
-  const uid = state.user?.id
-  const mine = wi.filter(w => ['New', 'Assigned', 'In Progress'].includes(w.status) && (!uid || !w.assignee || w.assignee === uid || w.role === state.user?.role))
-  return mine.length || wi.filter(w => ['New', 'Assigned', 'In Progress'].includes(w.status)).length
+  const claimHosp = Object.fromEntries((state.boot?.claims || []).map(c => [c.id, c.hospitalId]))
+  return (state.boot?.workItems || []).filter(w => !['Resolved', 'Closed'].includes(w.status)
+    && (!scopeHid.value || !w.claimId || claimHosp[w.claimId] === scopeHid.value)).length
 })
 const claimCount = computed(() => {
   const cl = state.boot?.claims || []
-  const hid = state.user?.hospitalId
+  const hid = scopeHid.value
   return cl.filter(c => (!hid || c.hospitalId === hid) && !['paid', 'written_off'].includes(c.status)).length
 })
 
@@ -68,15 +68,15 @@ const groups = computed(() => [
     label: 'Klaim',
     items: [
       { to: '/claims', label: 'Daftar Klaim', ico: 'claims', badge: claimCount.value || null },
-      { to: '/scrubber', label: 'Validasi (Scrubber)', ico: 'shieldCheck' },
-      { to: '/batches', label: 'Batch & Pengajuan', ico: 'layers' },
+      { to: '/scrubber', label: 'Library Aturan', ico: 'shieldCheck', hidden: !canSeeValidation() },
+      { to: '/batches', label: 'Batch & Pengajuan', ico: 'layers', hidden: !canSeeValidation() },
     ],
   },
   {
     label: 'Uang',
     items: [
-      { to: '/payments', label: 'Pembayaran', ico: 'wallet' },
-      { to: '/aging', label: 'Piutang (AR Aging)', ico: 'clock' },
+      { to: '/payments', label: 'Pembayaran', ico: 'wallet', hidden: !canSeeMoney() },
+      { to: '/aging', label: 'Piutang (AR Aging)', ico: 'clock', hidden: !canSeeMoney() },
     ],
   },
   {
@@ -90,7 +90,7 @@ const groups = computed(() => [
   {
     label: 'Sistem',
     items: [
-      { to: '/engineapi', label: 'Engine API', ico: 'code', hidden: !canSeeEngine.value },
+      { to: '/engineapi', label: 'Engine API', ico: 'code', hidden: !canSeeEngine() },
       { to: '/audit', label: 'Audit Trail', ico: 'fingerprint' },
       { to: '/compliance', label: 'Kepatuhan Regulasi', ico: 'scale' },
       { to: '/settings', label: 'Pengaturan', ico: 'settings', hidden: !canConfigure.value },

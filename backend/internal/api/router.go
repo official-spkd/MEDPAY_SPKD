@@ -156,24 +156,24 @@ func NewRouter(db *gorm.DB) (*gin.Engine, error) {
 
 	// Klaim
 	s.GET("/claims", perm(model.PermView), claimListHandler(db))
-	s.POST("/claims", perm(model.PermCreate), claimCreateHandler(db))
+	s.POST("/claims", perm(model.PermCreate), autoBatchSync(db), claimCreateHandler(db))
 	s.GET("/claims/:id", perm(model.PermView), claimGetHandler(db))
-	s.PUT("/claims/:id", perm(model.PermEdit), claimUpdateHandler(db))
+	s.PUT("/claims/:id", perm(model.PermEdit), autoBatchSync(db), claimUpdateHandler(db))
 	s.DELETE("/claims/:id", perm(model.PermDelete), claimDeleteHandler(db))
-	s.POST("/claims/:id/resolve", perm(model.PermResolve), claimResolveHandler(db))
+	s.POST("/claims/:id/resolve", perm(model.PermResolve), autoBatchSync(db), claimResolveHandler(db))
 	// Izin dicek per transisi di handler: pengajuan (submitted) butuh APPROVE, lainnya EDIT.
-	s.POST("/claims/:id/transition", perm(model.PermView), claimTransitionHandler(db))
+	s.POST("/claims/:id/transition", perm(model.PermView), autoBatchSync(db), claimTransitionHandler(db))
 	s.POST("/claims/:id/scrub", perm(model.PermView), claimScrubHandler(db))
 	s.POST("/grouper/preview", perm(model.PermResolve), grouperPreviewHandler(db))
 
 	// Scrubber
 	s.GET("/scrubber/top-causes", perm(model.PermView), scrubTopCausesHandler(db))
-	s.PUT("/scrub-rules/:id", perm(model.PermConfigure), scrubRuleUpdateHandler(db))
-	s.POST("/scrub-rules/override", perm(model.PermOverride), scrubOverrideHandler(db))
+	s.PUT("/scrub-rules/:id", perm(model.PermConfigure), autoBatchSync(db), scrubRuleUpdateHandler(db))
+	s.POST("/scrub-rules/override", perm(model.PermOverride), autoBatchSync(db), scrubOverrideHandler(db))
 
 	// Resume medis
-	s.POST("/resume/bulk", perm(model.PermCreate), resumeBulkHandler(db))
-	s.PUT("/resume/:id", perm(model.PermEdit), resumeUpdateHandler(db))
+	s.POST("/resume/bulk", perm(model.PermCreate), autoBatchSync(db), resumeBulkHandler(db))
+	s.PUT("/resume/:id", perm(model.PermEdit), autoBatchSync(db), resumeUpdateHandler(db))
 	s.DELETE("/resume/:id", perm(model.PermDelete), resumeDeleteHandler(db))
 
 	// Batch
@@ -188,6 +188,8 @@ func NewRouter(db *gorm.DB) (*gin.Engine, error) {
 	// Pembayaran & rekonsiliasi
 	s.GET("/payments", perm(model.PermView), paymentListHandler(db))
 	s.POST("/payments", perm(model.PermCreate), paymentCreateHandler(db))
+	s.GET("/payments/batches", perm(model.PermView), batchPaymentSummaryHandler(db))
+	s.POST("/payments/batch", perm(model.PermCreate), batchPaymentCreateHandler(db))
 	s.DELETE("/payments/:id", perm(model.PermEdit), paymentDeleteHandler(db))
 	s.GET("/bank-imports", perm(model.PermView), bankImportListHandler(db))
 	s.POST("/bank-imports", perm(model.PermCreate), bankImportCreateHandler(db))

@@ -776,10 +776,7 @@ func scrubTopCausesHandler(db *gorm.DB) gin.HandlerFunc {
 func scrubRuleUpdateHandler(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		u := currentUser(c)
-		if !auth.IsPlatformStaff(u) {
-			fail(c, http.StatusForbidden, "Aturan scrub berlaku untuk semua RS; hanya staf SPKD yang dapat mengubahnya")
-			return
-		}
+		// Izin CONFIGURE sudah dicek di route (Super Admin, Admin RS, IT/SIMRS).
 		var body struct {
 			Enabled bool `json:"enabled"`
 		}

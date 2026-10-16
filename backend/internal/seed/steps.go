@@ -254,6 +254,19 @@ func (s *seeder) seedBatches() error {
 			HospitalID:  s.must(s.hospitalIDs, b.HospitalID, "RS"),
 			CreatedByID: s.must(s.userByName, b.CreatedBy, "pengguna"),
 		}
+		if b.InsurerID != "" {
+			insName := ""
+			for _, in := range s.data.Insurers {
+				if in.ID == b.InsurerID {
+					insName = in.Name
+				}
+			}
+			from, to := s.at(b.PeriodStart), s.at(b.PeriodEnd)
+			m.InsurerID = opt(s.insurerIDs, b.InsurerID)
+			m.PeriodStart, m.PeriodEnd = &from, &to
+			m.Period = to.Format("2006-01")
+			m.Name = fmt.Sprintf("%s — %s s/d %s", insName, from.Format("2006-01-02"), to.Format("2006-01-02"))
+		}
 		if s.err != nil {
 			return nil
 		}

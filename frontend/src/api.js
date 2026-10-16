@@ -19,6 +19,17 @@ function withPort(path) {
   return path + (path.includes('?') ? '&' : '?') + 'XTransformPort=' + PORT_QS
 }
 
+// Filter RS milik Super Admin: ditambahkan sebagai ?hospitalId= pada permintaan baca (GET) dan
+// simulasi KAPJ; backend & mock sudah membatasi data sesuai parameter ini.
+let scopeHospital = ''
+export function setScopeHospital(id) { scopeHospital = id || '' }
+function scoped(path, method) {
+  if (!scopeHospital || path.includes('hospitalId=')) return path
+  const isRead = method === 'GET' && !/^(bootstrap|me|reference|notifications|auth\/)/.test(path) && !/^claims\/[^/?]+$/.test(path)
+  if (!isRead && !(method === 'POST' && path === 'kapj/simulate')) return path
+  return path + (path.includes('?') ? '&' : '?') + 'hospitalId=' + encodeURIComponent(scopeHospital)
+}
+
 export function getToken() { return localStorage.getItem('spkd_token') || '' }
 export function setToken(t) { t ? localStorage.setItem('spkd_token', t) : localStorage.removeItem('spkd_token') }
 
@@ -27,6 +38,7 @@ export class ApiError extends Error {
 }
 
 export async function api(path, { method = 'GET', body } = {}) {
+  path = scoped(path, method)
   let ok, status, data
   if (USE_MOCK) {
     const r = await mockRequest(method, path, body)

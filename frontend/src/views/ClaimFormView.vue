@@ -1,11 +1,36 @@
 <template>
   <main class="page">
-    <PageHeader icon="file" :title="isEdit ? 'Edit Klaim ' + docNo(form) : 'Klaim COB Baru'" sub="Struktur field mengikuti form e-Klaim INA-CBG. Klaim baru berstatus Draft. LOS dihitung otomatis; PBI tidak eligible COB.">
+    <PageHeader icon="file" :title="isEdit ? 'Edit Klaim ' + docNo(form) : 'Klaim COB Baru'" sub="Isi form manual 4 langkah, atau unggah CSV untuk mengisi semua kolom sekaligus. Klaim berstatus Draft. LOS dihitung otomatis; PBI tidak eligible COB.">
       <template #actions>
         <router-link to="/claims" class="btn btn-outline btn-sm">‹ Daftar Klaim</router-link>
       </template>
     </PageHeader>
 
+    <!-- Unggah CSV (klaim baru) -->
+    <div class="card card-pad" v-if="!isEdit" style="margin-bottom:16px">
+      <div class="card-title">{{ loaded ? 'Klaim dimuat dari ' + fileName : 'Isi Cepat dari File CSV (opsional)' }}</div>
+      <div class="card-sub">Alternatif dari isian manual di bawah. Satu file = satu klaim. Wajib memuat <b>18 komponen tarif RS</b> dan data <b>penjamin kedua</b>. Pemisah <code>;</code> (atau <code>,</code>); dx sekunder &amp; prosedur dipisah <code>|</code>. Tarif INA-CBG di-resolve otomatis setelah file dimuat.</div>
+      <div class="chips-row">
+        <label class="btn btn-teal btn-sm" style="cursor:pointer">
+          {{ loaded ? 'Unggah Ulang CSV' : '+ Pilih File CSV' }}
+          <input type="file" accept=".csv,text/csv" style="display:none" @change="onCsvFile" />
+        </label>
+        <button class="btn btn-outline btn-sm" type="button" @click="downloadSample">⬇ Unduh Contoh CSV</button>
+      </div>
+      <div class="alert danger" v-if="csvErrors.length" style="margin-top:12px"><span>⛔</span><span><b>File tidak dapat dimuat:</b><div v-for="(e, i) in csvErrors" :key="i">• {{ e }}</div></span></div>
+      <div class="alert warning" v-if="csvWarnings.length" style="margin-top:12px"><span>⚠</span><span><div v-for="(w, i) in csvWarnings" :key="i">{{ w }}</div></span></div>
+      <details style="margin-top:12px;font-size:12.5px">
+        <summary style="cursor:pointer;font-weight:600">Daftar kolom CSV</summary>
+        <div style="margin-top:6px;line-height:1.7">
+          <b>Wajib:</b> <code>sep, no_kartu_bpjs, mrn, nama_pasien, jenis_peserta (NON_PBI/PBI), jenis_rawat (RAWAT_INAP/RAWAT_JALAN), kelas (I/II/III), jenis_kelamin (L/P), tgl_lahir, tgl_masuk, tgl_pulang (YYYY-MM-DD), dx_utama</code><br />
+          <b>18 komponen tarif RS (wajib, isi 0 bila tidak ada):</b> <code>{{ componentCols }}</code><br />
+          <b>Penjamin kedua (wajib):</b> <code>penjamin</code> (nama resmi daftar penjamin), <code>no_polis</code>, <code>nama_tertanggung</code><br />
+          <b>Opsional:</b> <code>kode_faskes, dpjp, dx_sekunder, prosedur, nama_penjamin_tambahan, jenis_asuransi, no_anggota, jenis_perlindungan, plafon_polis</code>
+        </div>
+      </details>
+    </div>
+
+    <div>
     <div class="stepper">
       <div v-for="(s, i) in steps" :key="i" class="step" :class="{ active: step === i }" @click="step = i" role="button" :aria-label="'Langkah ' + (i + 1)">
         <span class="no">{{ i + 1 }}</span>
@@ -135,21 +160,25 @@
       </div>
       <div class="alert danger" v-if="resolveErr"><span>⛔</span><span>Grouper gagal: <b>{{ resolveErr }}</b> — {{ resolveErr === 'EKLAIM_CONFIG_MISSING' ? 'konfigurasi e-Klaim RS belum tersedia (atur di Pengaturan).' : 'kombinasi diagnosa tidak dapat digrouping.' }}</span></div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" class="two-panel">
+      <div style="display:flex;flex-direction:column;gap:20px">
         <div>
           <div class="card-title" style="font-size:13px">Special CMG / Top Up (6)</div>
           <div class="hint" style="margin-bottom:8px">Top Up Tariff = Σ enam komponen. Total Tarif JKN = Tarif Murni + Top Up (angka yang dibayar BPJS).</div>
-          <div v-for="k in SPECIAL_CMG_KEYS" :key="k" class="field">
-            <label>{{ SPECIAL_CMG_LABELS[k] }}</label>
-            <MoneyInput v-model="form.specialCmg[k]" />
+          <div class="form-grid">
+            <div v-for="k in SPECIAL_CMG_KEYS" :key="k" class="field">
+              <label>{{ SPECIAL_CMG_LABELS[k] }}</label>
+              <MoneyInput v-model="form.specialCmg[k]" />
+            </div>
           </div>
         </div>
         <div>
           <div class="card-title" style="font-size:13px">18 Komponen Tarif RS</div>
           <div class="hint" style="margin-bottom:8px">Total Tarif RS = Σ 18 komponen (nilai tagihan rumah sakit).</div>
-          <div v-for="k in TARIFF_COMPONENT_KEYS" :key="k" class="field">
-            <label>{{ COMPONENT_LABELS[k] }}</label>
-            <MoneyInput v-model="form.hospitalTariff[k]" />
+          <div class="form-grid">
+            <div v-for="k in TARIFF_COMPONENT_KEYS" :key="k" class="field">
+              <label>{{ COMPONENT_LABELS[k] }}</label>
+              <MoneyInput v-model="form.hospitalTariff[k]" />
+            </div>
           </div>
         </div>
       </div>
@@ -199,6 +228,7 @@
           <label>Jenis Perlindungan</label>
           <select class="input" v-model="form.coverageType">
             <option v-for="o in refOptions('coverage_type')" :key="o.code" :value="o.code">{{ o.label }}</option>
+            <option v-if="form.coverageType && !refOptions('coverage_type').some(o => o.code === form.coverageType)" :value="form.coverageType">{{ form.coverageType }}</option>
           </select>
           <div class="hint" v-if="form.careClass === 'III' && form.coverageType.toLowerCase().includes('selisih kelas')" style="color:var(--warning)">Kelas III + manfaat selisih kelas → scrubber R12 memberi peringatan.</div>
         </div>
@@ -219,18 +249,21 @@
         <span v-if="busy" class="spin" style="border-top-color:#fff" /> {{ isEdit ? 'Simpan Perubahan' : 'Simpan Draft Klaim' }}
       </button>
     </div>
+    </div>
   </main>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
-import { state, hasPerm, toast, loadBoot } from '../store'
+import { state, hasPerm, toast, loadBoot, refreshBoot } from '../store'
 import MoneyInput from '../components/MoneyInput.vue'
 import PageHeader from '../components/PageHeader.vue'
 import SearchSelect from '../components/SearchSelect.vue'
 import { formatRp, sumTariff, sumCmg, parseMoney, addDays, docNo, refOptions } from '../format'
+import { downloadBlobCsv } from '../api'
+import { parseClaimCsv, sampleRows, COMPONENT_COLUMNS } from '../claimCsv'
 
 const route = useRoute()
 const router = useRouter()
@@ -249,13 +282,53 @@ const resolveErr = ref('')
 const secDraft = ref('')
 const procDraft = ref('')
 const insSel = ref(null)
+const loaded = ref(false)
+const fileName = ref('')
+const csvErrors = ref([])
+const csvWarnings = ref([])
+const componentCols = COMPONENT_COLUMNS.map(c => c.col).join(', ')
+
+function downloadSample() {
+  const today = new Date().toISOString().slice(0, 10)
+  downloadBlobCsv('contoh-klaim-medpay.csv', sampleRows(addDays(today, -5), addDays(today, -1)))
+}
+
+// Muat CSV → isi form → langsung buka langkah Tarif dan resolve INA-CBG.
+function onCsvFile(ev) {
+  const file = ev.target.files[0]
+  ev.target.value = ''
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = async () => {
+    const res = parseClaimCsv(String(reader.result || ''), {
+      insurers: state.boot?.insurers || [], hospitals: state.boot?.hospitals || [],
+      lockedHospitalId: isSuper.value ? '' : state.user?.hospitalId,
+    })
+    csvErrors.value = res.errors
+    csvWarnings.value = res.warnings || []
+    if (res.errors.length) return
+    const { insurerName, ...claim } = res.claim
+    const blank = blankForm()
+    form.value = { ...blank, ...claim, hospitalId: claim.hospitalId || form.value.hospitalId, hospitalTariff: { ...blank.hospitalTariff, ...claim.hospitalTariff } }
+    recalcLos()
+    loaded.value = true
+    fileName.value = file.name
+    resolveErr.value = ''
+    step.value = 2
+    await nextTick()
+    insSel.value?.setText(insurerName)
+    if (hasPerm('RESOLVE')) await resolveTariff()
+    toast('CSV dimuat — periksa tarif lalu simpan draft klaim.', 'success')
+  }
+  reader.readAsText(file)
+}
 
 function blankForm() {
   const cmg = {}, comp = {}
-  for (const k of SPECIAL_CMG_KEYS_LIST) cmg[k] = 0
-  for (const k of TARIFF_KEYS_LIST) comp[k] = 0
+  for (const k of SPECIAL_CMG_KEYS) cmg[k] = 0
+  for (const k of TARIFF_COMPONENT_KEYS) comp[k] = 0
   return {
-    hospitalId: state.user?.hospitalId || '', sepNo: '', bpjsCardNo: '', mrn: '', patientName: '',
+    hospitalId: state.user?.hospitalId || state.hospitalFilter || '', sepNo: '', bpjsCardNo: '', mrn: '', patientName: '',
     dpjp: '', participantType: 'NON_PBI', careType: 'RAWAT_INAP', careClass: 'I', sex: 'L',
     dateOfBirth: '', admissionDate: '', dischargeDate: '', los: 0,
     primaryDiagnosis: '', secondaryDiagnoses: [], procedures: [],
@@ -266,7 +339,7 @@ function blankForm() {
   }
 }
 
-import { SPECIAL_CMG_KEYS as SPECIAL_CMG_KEYS_LIST, TARIFF_COMPONENT_KEYS as TARIFF_KEYS_LIST, SPECIAL_CMG_LABELS, COMPONENT_LABELS } from '../format'
+import { SPECIAL_CMG_KEYS, TARIFF_COMPONENT_KEYS, SPECIAL_CMG_LABELS, COMPONENT_LABELS } from '../format'
 
 const form = ref(blankForm())
 // Jika sesi user dipulihkan setelah form dirender (refresh halaman), isi Kode Faskes otomatis.
@@ -333,6 +406,7 @@ async function save() {
       const res = await api('claims', { method: 'POST', body })
       toast('Draft klaim ' + res.id + ' tersimpan.', 'success')
     }
+    await refreshBoot()
     router.push('/claims')
   } catch (e) {
     toast(e.message, 'error')
@@ -347,6 +421,7 @@ onMounted(async () => {
     form.value = { ...blankForm(), ...c, policyCeilingInput: c.policyCeiling || 0 }
     if (insSel.value) insSel.value.setText(state.boot.insurers.find(i => i.id === c.insurerId)?.name || '')
   } else {
+    // Nilai awal isian manual: masuk H-5, pulang H-1.
     form.value.admissionDate = addDays(new Date().toISOString().slice(0, 10), -5)
     form.value.dischargeDate = addDays(new Date().toISOString().slice(0, 10), -1)
     recalcLos()

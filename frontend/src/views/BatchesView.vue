@@ -2,7 +2,7 @@
   <main class="page">
     <PageHeader icon="layers" title="Batch &amp; Pengajuan" sub="Kelompokkan klaim siap diajukan per penjamin/periode. Menghapus batch tidak pernah menghapus klaim. Klaim dengan blocker terbuka tidak dapat masuk batch.">
       <template #actions>
-        <button class="btn btn-primary" v-if="hasPerm('CREATE')" @click="showNew = true"><Icon name="plus" :size="14" /> Batch Baru</button>
+        <button class="btn btn-primary" v-if="hasPerm('CREATE') && canWriteBatch()" @click="showNew = true"><Icon name="plus" :size="14" /> Batch Baru</button>
       </template>
     </PageHeader>
 
@@ -14,11 +14,11 @@
             <tbody>
               <tr v-for="b in batches" :key="b.batch.id" @click="select(b.batch.id)" :style="selected === b.batch.id ? 'background:var(--teal-bg)' : ''">
                 <td><b>{{ b.batch.name }}</b> <span class="mono" style="font-size:11px;color:var(--text-muted)">{{ docNo(b.batch, 'batchNo') }}</span><div style="font-size:11.5px;color:var(--text-muted)">{{ b.batch.note || '—' }}</div></td>
-                <td>{{ b.batch.period }}</td>
+                <td style="font-size:12px">{{ periodLabel(b.batch) }}</td>
                 <td class="num">{{ b.claimCount }}</td>
                 <td class="num" style="font-weight:700">{{ formatRpShort(b.totalGap) }}</td>
                 <td style="font-size:12px">{{ formatDate(b.batch.createdAt) }}<br /><span style="color:var(--text-muted);font-size:11px">{{ b.batch.createdBy }}</span></td>
-                <td><button class="btn btn-danger btn-xs" v-if="hasPerm('DELETE')" @click.stop="askDelete(b.batch.id)">Hapus</button></td>
+                <td><button class="btn btn-danger btn-xs" v-if="hasPerm('DELETE') && canWriteBatch()" @click.stop="askDelete(b.batch.id)">Hapus</button></td>
               </tr>
               <tr v-if="!batches.length"><td colspan="6"><Empty icon="▥" title="Belum ada batch" desc="Buat batch untuk mengelompokkan klaim sebelum diajukan ke penjamin." /></td></tr>
             </tbody>
@@ -28,13 +28,14 @@
 
       <div class="card card-pad" v-if="detail">
         <div class="card-title">{{ detail.batch.name }}</div>
-        <div class="card-sub">Periode {{ detail.batch.period }} · {{ detail.claims.length }} klaim · Total gap {{ formatRp(detail.totalGap) }} <span v-if="detail.blockerHits" style="color:var(--danger)">· {{ detail.blockerHits }} klaim ber-blocker</span></div>
+        <div class="card-sub">Periode {{ periodLabel(detail.batch) }} · {{ detail.claims.length }} klaim · Total gap {{ formatRp(detail.totalGap) }} <span v-if="detail.blockerHits" style="color:var(--danger)">· {{ detail.blockerHits }} klaim ber-blocker</span></div>
         <div class="chips-row" style="margin-bottom:12px">
-          <button class="btn btn-outline btn-sm" @click="showAdd = true" v-if="hasPerm('EDIT')">+ Tambah Klaim</button>
-          <button class="btn btn-teal btn-sm" v-if="hasPerm('APPROVE') && readyCount" :disabled="busy" @click="submitAll">Ajukan Semua ({{ readyCount }})</button>
+          <button class="btn btn-outline btn-sm" @click="showAdd = true" v-if="hasPerm('EDIT') && canWriteBatch()">+ Tambah Klaim</button>
+          <button class="btn btn-teal btn-sm" v-if="hasPerm('APPROVE') && canWriteBatch() && readyCount" :disabled="busy || detail.blockerHits > 0" :title="detail.blockerHits > 0 ? 'Selesaikan blocker terlebih dahulu' : ''" @click="submitAll">Ajukan Semua ({{ readyCount }})</button>
           <button class="btn btn-outline btn-sm" @click="exportCsv">Ekspor CSV</button>
           <button class="btn btn-outline btn-sm" @click="exportPdf">Ekspor PDF (landscape)</button>
         </div>
+        <div class="alert danger" v-if="detail.blockerHits > 0" style="margin-bottom:12px"><span>⛔</span><span>Batch belum bisa diajukan: {{ detail.blockerHits }} klaim masih punya blocker terbuka. Selesaikan blocker di klaim tersebut, atau keluarkan klaimnya dari batch.</span></div>
         <div class="tbl-wrap" style="max-height:400px;overflow-y:auto">
           <table class="tbl" style="min-width:420px">
             <thead><tr><th>Klaim</th><th>Pasien</th><th>Status</th><th class="num">Gap</th><th></th></tr></thead>
@@ -44,7 +45,7 @@
                 <td>{{ c.patientName }}</td>
                 <td><span class="badge" :class="CLAIM_TONE[c.status]">{{ CLAIM_LABELS[c.status] }}</span></td>
                 <td class="num">{{ formatRpShort(gapOf(c)) }}</td>
-                <td><button class="btn btn-outline btn-xs" v-if="hasPerm('EDIT')" @click="removeClaim(c.id)">✕</button></td>
+                <td><button class="btn btn-outline btn-xs" v-if="hasPerm('EDIT') && canWriteBatch()" @click="removeClaim(c.id)">✕</button></td>
               </tr>
             </tbody>
           </table>
@@ -57,8 +58,15 @@
     </div>
 
     <Modal v-if="showNew" title="Batch Baru" @close="showNew = false">
-      <div class="field"><label>Nama Batch <span class="req">*</span></label><input class="input" v-model="newBatch.name" placeholder="Batch Penjamin Q2 — Kiriman 1" /></div>
-      <div class="field"><label>Periode <span class="req">*</span></label><input class="input" v-model="newBatch.period" placeholder="2026-06" /></div>
+      <div class="field">
+        <label>Penjamin (Asuransi) <span class="req">*</span></label>
+        <SearchSelect ref="insSel" :options="insurerOptions" v-model="newBatch.insurerId" placeholder="Cari nama penjamin…" />
+      </div>
+      <div class="form-grid">
+        <div class="field"><label>Tanggal Mulai <span class="req">*</span></label><input class="input" type="date" v-model="newBatch.dateFrom" /></div>
+        <div class="field"><label>Tanggal Akhir <span class="req">*</span></label><input class="input" type="date" v-model="newBatch.dateTo" /></div>
+      </div>
+      <div class="hint" style="margin:-4px 0 12px">Nama batch dibuat otomatis dari penjamin &amp; tanggal. Klaim penjamin ini yang <b>tanggal pulangnya</b> dalam rentang tersebut (status Draft/Siap Diajukan, belum ber-batch) otomatis masuk ke batch. Klaim yang masih punya blocker akan <b>otomatis menyusul</b> begitu blockernya selesai.</div>
       <div class="field">
         <label>Kode Faskes (tidak dapat diubah setelah dibuat) <span class="req">*</span></label>
         <select class="input" v-model="newBatch.hospitalId" :disabled="!isSuper">
@@ -68,12 +76,12 @@
       <div class="field"><label>Catatan</label><input class="input" v-model="newBatch.note" /></div>
       <template #footer>
         <button class="btn btn-outline" @click="showNew = false">Batal</button>
-        <button class="btn btn-teal" :disabled="!newBatch.name || !newBatch.period || !newBatch.hospitalId || busy" @click="create">Buat Batch</button>
+        <button class="btn btn-teal" :disabled="!newBatch.insurerId || !newBatch.dateFrom || !newBatch.dateTo || newBatch.dateTo < newBatch.dateFrom || !newBatch.hospitalId || busy" @click="create">Buat Batch</button>
       </template>
     </Modal>
 
     <Modal v-if="showAdd" title="Tambah Klaim ke Batch" wide @close="showAdd = false">
-      <p class="hint" style="margin-bottom:10px">Hanya klaim satu RS yang sama, belum tergabung batch, dan tanpa blocker terbuka. Klaim ber-blocker ditolak otomatis.</p>
+      <p class="hint" style="margin-bottom:10px">Hanya klaim <b v-if="detail.batch.insurerId">penjamin {{ insurerName(detail.batch.insurerId) }}</b><span v-else>satu RS yang sama</span>, belum tergabung batch, dan tanpa blocker terbuka. Klaim ber-blocker ditolak otomatis. Klaim penjamin ini yang sudah bebas blocker dan tanggal pulangnya dalam periode batch juga masuk <b>otomatis</b>.</p>
       <div class="tbl-wrap" style="max-height:320px;overflow-y:auto">
         <table class="tbl" style="min-width:520px">
           <thead><tr><th></th><th>Klaim</th><th>Pasien</th><th>Penjamin</th><th class="num">Gap</th><th>Kesiapan</th></tr></thead>
@@ -101,11 +109,14 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { api } from '../api'
+import { useRoute } from 'vue-router'
 import { state, hasPerm, toast, loadBoot } from '../store'
+import { canWriteBatch } from '../access'
 import Modal from '../components/Modal.vue'
 import PageHeader from '../components/PageHeader.vue'
 import Icon from '../components/Icon.vue'
 import Empty from '../components/Empty.vue'
+import SearchSelect from '../components/SearchSelect.vue'
 import ScoreRing from '../components/ScoreRing.vue'
 import { formatRp, formatRpShort, formatDate, sumTariff, jknTotal, CLAIM_LABELS, CLAIM_TONE, downloadBlobCsv, docNo } from '../format'
 
@@ -116,7 +127,12 @@ const showNew = ref(false)
 const showAdd = ref(false)
 const addSel = ref([])
 const busy = ref(false)
-const newBatch = ref({ name: '', period: '', hospitalId: '', note: '' })
+const insSel = ref(null)
+const monthStart = () => new Date().toISOString().slice(0, 8) + '01'
+const blankBatch = () => ({ insurerId: '', dateFrom: monthStart(), dateTo: new Date().toISOString().slice(0, 10), hospitalId: state.user?.hospitalId || '', note: '' })
+const newBatch = ref({ ...blankBatch(), hospitalId: '' })
+const insurerOptions = computed(() => (state.boot?.insurers || []).map(i => ({ id: i.id, label: i.name, sub: i.type })))
+function periodLabel(b) { return b.periodStart ? formatDate(b.periodStart) + ' – ' + formatDate(b.periodEnd) : b.period }
 const isSuper = computed(() => state.user?.role === 'SUPER_ADMIN')
 
 async function load() {
@@ -131,9 +147,10 @@ async function create() {
   busy.value = true
   try {
     const b = await api('batches', { method: 'POST', body: newBatch.value })
-    toast('Batch ' + docNo(b, 'batchNo') + ' dibuat.', 'success')
+    toast('Batch ' + docNo(b, 'batchNo') + ' dibuat: ' + (b.autoAdded || 0) + ' klaim otomatis masuk' + (b.autoBlocked ? ', ' + b.autoBlocked + ' klaim ber-blocker tidak dimasukkan.' : '.'), b.autoBlocked ? 'warning' : 'success', 6000)
     showNew.value = false
-    newBatch.value = { name: '', period: '', hospitalId: state.user?.hospitalId || '', note: '' }
+    newBatch.value = { ...blankBatch(), hospitalId: newBatch.value.hospitalId }
+    insSel.value?.setText('')
     selected.value = b.id
     await load()
   } catch (e) { toast(e.message, 'error') } finally { busy.value = false }
@@ -142,7 +159,8 @@ async function create() {
 async function addClaims() {
   try {
     const res = await api('batches/' + selected.value + '/claims', { method: 'POST', body: { claimIds: addSel.value } })
-    toast(res.added + ' klaim ditambahkan' + (res.blocked ? ', ' + res.blocked + ' ditolak karena blocker.' : '.'), res.blocked ? 'warning' : 'success')
+    const extra = (res.blocked ? ', ' + res.blocked + ' ditolak karena blocker' : '') + (res.otherInsurer ? ', ' + res.otherInsurer + ' ditolak karena beda penjamin' : '')
+    toast(res.added + ' klaim ditambahkan' + (extra ? extra + '.' : '.'), extra ? 'warning' : 'success')
     addSel.value = []
     showAdd.value = false
     await load()
@@ -210,7 +228,10 @@ function exportPdf() {
 
 onMounted(async () => {
   await loadBoot()
-  newBatch.value.hospitalId = state.user?.hospitalId || state.boot?.hospitals[0]?.id || ''
+  newBatch.value.hospitalId = state.user?.hospitalId || state.hospitalFilter || state.boot?.hospitals[0]?.id || ''
   await load()
+  // Dibuka dari drill-down Piutang: ?open=<id batch>
+  const open = useRoute().query.open
+  if (open) select(String(open))
 })
 </script>

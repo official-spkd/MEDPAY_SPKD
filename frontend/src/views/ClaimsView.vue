@@ -2,7 +2,7 @@
   <main class="page">
     <PageHeader icon="claims" title="Daftar Klaim COB" sub="Klaim penjamin kedua untuk selisih tarif (Tagihan RS − Tarif JKN). Cari berdasarkan SEP / nama pasien / MRN.">
       <template #actions>
-        <router-link to="/claims/new" class="btn btn-primary" v-if="hasPerm('CREATE')"><Icon name="plus" :size="14" /> Klaim Baru</router-link>
+        <router-link to="/claims/new" class="btn btn-primary" v-if="canCreateClaim()"><Icon name="plus" :size="14" /> Klaim Baru</router-link>
       </template>
     </PageHeader>
 
@@ -64,6 +64,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api'
 import { state, hasPerm, loadBoot } from '../store'
+import { canCreateClaim } from '../access'
 import Empty from '../components/Empty.vue'
 import PageHeader from '../components/PageHeader.vue'
 import Icon from '../components/Icon.vue'

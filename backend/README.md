@@ -88,6 +88,8 @@ ditambahkan; data yang sudah diubah admin tidak ditimpa.
 | `seed_finance.go` | 6 pembayaran, 2 impor mutasi, 9 baris mutasi |
 | `seed_ops.go` | 6 tugas antrean kerja, 4 notifikasi, 25 audit log |
 | `seed_platform.go` | 2 partner Engine API (+ user key per RS), 14 klaim masuk via Engine API |
+| `seed_extra.go` | Tambahan: 13 klaim bersih lintas status (Draft → Lunas, ditolak, disanggah, hapus buku), 4 batch per-penjamin (BT-0004..0007), 3 pembayaran, 1 impor mutasi (3 baris), 6 tugas, 3 notifikasi. Klaim dibangun dari tabel `extraSpecs` |
+| `seed_test.go` | Tes integritas data demo tanpa database (referensi, ID ganda, klaim tambahan bebas blocker) — jalankan `go test ./internal/seed/` setelah mengubah data demo |
 | `steps.go` | Langkah pengisian & relasi antar tabel |
 
 Setelah seed, semua tabel terisi kecuali `sessions` (terbentuk saat login). Tanggal transaksi demo ditulis relatif

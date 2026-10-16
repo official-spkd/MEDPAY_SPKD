@@ -1,5 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { getToken } from './api'
+import { state, loadMe, toast } from './store'
+import { routeAllowed } from './access'
 
 const routes = [
   { path: '/login', component: () => import('./views/LoginView.vue'), meta: { public: true, title: 'Masuk' } },
@@ -8,7 +10,7 @@ const routes = [
   { path: '/claims', component: () => import('./views/ClaimsView.vue'), meta: { title: 'Daftar Klaim', crumb: 'Klaim' } },
   { path: '/claims/new', component: () => import('./views/ClaimFormView.vue'), meta: { title: 'Klaim Baru', crumb: 'Klaim' } },
   { path: '/claims/:id/edit', component: () => import('./views/ClaimFormView.vue'), meta: { title: 'Edit Klaim', crumb: 'Klaim' } },
-  { path: '/scrubber', component: () => import('./views/ScrubberView.vue'), meta: { title: 'Validasi Klaim (Scrubber)', crumb: 'Klaim' } },
+  { path: '/scrubber', component: () => import('./views/ScrubberView.vue'), meta: { title: 'Library Aturan', crumb: 'Klaim' } },
   { path: '/batches', component: () => import('./views/BatchesView.vue'), meta: { title: 'Batch & Pengajuan', crumb: 'Klaim' } },
   { path: '/payments', component: () => import('./views/PaymentsView.vue'), meta: { title: 'Pembayaran & Rekonsiliasi', crumb: 'Uang' } },
   { path: '/aging', component: () => import('./views/AgingView.vue'), meta: { title: 'Piutang (AR Aging)', crumb: 'Uang' } },
@@ -27,9 +29,17 @@ export const router = createRouter({
   routes,
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   if (!to.meta.public && !getToken()) return '/login'
   if (to.path === '/login' && getToken()) return '/'
+  if (!to.meta.public) {
+    // Setelah refresh/URL langsung, data pengguna belum ada; muat dulu agar izin bisa dicek.
+    if (!state.user) await loadMe()
+    if (state.user && !routeAllowed(to.path)) {
+      toast('Anda tidak memiliki akses ke halaman tersebut.', 'error')
+      return '/'
+    }
+  }
   document.title = (to.meta.title ? to.meta.title + ' — ' : '') + 'SPKD MedPay'
   return true
 })

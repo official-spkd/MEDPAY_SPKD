@@ -1,0 +1,10 @@
+sep;kategori;nama_item;sub_kategori;tanggal;hasil_catatan;jumlah;satuan;harga_satuan
+;REKAM_MEDIS;Resume Medis Rawat Inap;-;2026-10-14;Ringkasan pulang pasien I25.1;1;kali;250000
+;REKAM_MEDIS;Catatan Perkembangan Pasien (CPPT);-;2026-10-14;Kondisi stabil;1;kali;100000
+;HASIL_LAB;Darah Lengkap;Hematologi;2026-10-14;Hasil dalam batas normal;1;kali;150000
+;HASIL_LAB;Troponin I;Kimia Klinik;2026-10-14;Dipantau;1;kali;350000
+;HASIL_RADIOLOGI;Rontgen Thorax;Radiologi;2026-10-14;Tidak ada kelainan;1;kali;200000
+;OBAT;Aspirin 80 mg;-;2026-10-14;Diberikan 1x sehari;10;tablet;5000
+;BMHP;Infus Set;-;2026-10-14;Terpasang;2;buah;35000
+;BILLING;Rincian Tagihan RS;-;2026-10-14;Terlampir;1;lembar;0
+;PENUNJANG_LAINNYA;EKG;Penunjang;2026-10-14;Sinus ritme;1;kali;120000

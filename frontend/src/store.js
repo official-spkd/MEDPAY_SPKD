@@ -1,6 +1,6 @@
 // ── SPKD MedPay — Global state reaktif (tanpa library eksternal) ────────────
 import { reactive } from 'vue'
-import { api, getToken, setToken } from './api'
+import { api, getToken, setToken, setScopeHospital } from './api'
 import { applyReference } from './format'
 
 export const state = reactive({
@@ -14,7 +14,23 @@ export const state = reactive({
   toasts: [],
   notifOpen: false,
   userOpen: false,
+  hospitalFilter: '', // Super Admin: '' = semua RS, selain itu = id RS terpilih
+  scopeVersion: 0,    // naik setiap filter RS berubah agar halaman aktif memuat ulang datanya
 })
+
+// Super Admin memilih RS pada topbar; seluruh halaman memuat ulang dengan cakupan tersebut.
+export function setHospitalFilter(id) {
+  state.hospitalFilter = id || ''
+  setScopeHospital(state.hospitalFilter)
+  try { sessionStorage.setItem('spkd_hf', state.hospitalFilter) } catch { /* abaikan */ }
+  state.scopeVersion++
+}
+export function restoreHospitalFilter() {
+  let id = ''
+  try { id = sessionStorage.getItem('spkd_hf') || '' } catch { /* abaikan */ }
+  state.hospitalFilter = id
+  setScopeHospital(id)
+}
 
 export function hasPerm(p) { return state.permissions.includes(p) }
 
@@ -44,7 +60,16 @@ export async function loadBoot(force = false) {
   state.booted = true
 }
 
+// Muat ulang bootstrap (badge sidebar, notifikasi, ringkasan klaim/work item) tanpa reload halaman.
+export async function refreshBoot() {
+  if (!getToken()) return
+  try { state.boot = await api('bootstrap') } catch { /* abaikan: polling berikutnya akan mencoba lagi */ }
+}
+
 export function logout() {
+  state.hospitalFilter = ''
+  setScopeHospital('')
+  try { sessionStorage.removeItem('spkd_hf') } catch { /* abaikan */ }
   api('auth/logout', { method: 'POST' }).catch(() => {})
   setToken('')
   state.user = null

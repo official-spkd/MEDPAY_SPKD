@@ -10,7 +10,10 @@
       </div>
       <div class="faskes-id" v-else>
         <span class="h-ico"><Icon name="hospital" :size="17" /></span>
-        <span class="h-name">Semua Rumah Sakit</span>
+        <select class="input rs-filter" :value="state.hospitalFilter" @change="setHospitalFilter($event.target.value)" aria-label="Filter rumah sakit" title="Filter data per rumah sakit">
+          <option value="">Semua Rumah Sakit</option>
+          <option v-for="h in state.boot?.hospitals || []" :key="h.id" :value="h.id">{{ h.kodeFaskes }} — {{ h.name }}</option>
+        </select>
         <span class="chip green">SUPER ADMIN</span>
       </div>
       <div class="topbar-right">
@@ -95,7 +98,7 @@ import Icon from './Icon.vue'
 import SearchModal from './SearchModal.vue'
 import Modal from './Modal.vue'
 import { api } from '../api'
-import { state, toggleSidebar, toggleTheme, myHospital, logout, toast } from '../store'
+import { state, toggleSidebar, toggleTheme, myHospital, logout, toast, setHospitalFilter } from '../store'
 import { ROLE_LABELS, formatDateTime as fmtDateTime } from '../format'
 
 const route = useRoute()
@@ -103,7 +106,8 @@ const router = useRouter()
 const searchOpen = ref(false)
 const roleLabel = computed(() => ROLE_LABELS[state.user?.role] || state.user?.role)
 const myHosp = computed(() => myHospital())
-const notifs = computed(() => (state.boot?.notifications || []).slice(0, 12))
+// Terbaru di atas, maksimal 12 ditampilkan.
+const notifs = computed(() => [...(state.boot?.notifications || [])].sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 12))
 // Notifikasi belum dibaca milik pengguna ini (notifikasi untuk penerima lain hanya tampil sebagai log).
 const notifCount = computed(() => notifs.value.filter(n => !n.read && n.recipientUserId === state.user?.id).length)
 

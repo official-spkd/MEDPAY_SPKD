@@ -277,6 +277,7 @@ func paymentDTO(p model.Payment, claimNo string) J {
 func batchDTO(b model.Batch) J {
 	return J{
 		"id": idStr(b.ID), "batchNo": b.BatchNo, "name": b.Name, "period": b.Period, "hospitalId": idStr(b.HospitalID),
+		"insurerId": idPtrOrNil(b.InsurerID), "periodStart": fmtDatePtr(b.PeriodStart), "periodEnd": fmtDatePtr(b.PeriodEnd),
 		"createdAt": fmtStamp(b.CreatedAt), "createdBy": userName(b.CreatedBy, ""), "note": b.Note,
 	}
 }

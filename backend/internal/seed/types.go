@@ -125,6 +125,9 @@ type seedBankLine struct {
 
 type seedBatch struct {
 	ID, Name, Period, HospitalID, CreatedAt, CreatedBy, Note string
+	// Batch per-penjamin: bila InsurerID terisi, nama & periode dibentuk saat seeding dari
+	// penjamin + rentang tanggal (sudah digeser ke hari ini), sama seperti saat dibuat lewat UI.
+	InsurerID, PeriodStart, PeriodEnd string
 }
 
 type seedWorkComment struct {
@@ -206,9 +209,12 @@ func demoDataset() *demoData {
 	return &demoData{
 		Hospitals: seedHospitals, Users: seedUsers, Insurers: seedInsurers,
 		Regulations: seedRegulations,
-		Batches:     seedBatches, Claims: seedClaims, ResumeItems: seedResumeItems,
-		Payments: seedPayments, BankImports: seedBankImports, BankLines: seedBankLines,
-		WorkItems: seedWorkItems, Notifications: seedNotifications, AuditLog: seedAuditLogs,
+		Batches:     concat(seedBatches, extraBatches), Claims: concat(seedClaims, extraClaims()),
+		ResumeItems: concat(seedResumeItems, extraResume()),
+		Payments:    concat(seedPayments, extraPayments), BankImports: concat(seedBankImports, extraBankImports),
+		BankLines:   concat(seedBankLines, extraBankLines),
+		WorkItems:   concat(seedWorkItems, extraWorkItems), Notifications: concat(seedNotifications, extraNotifications),
+		AuditLog: seedAuditLogs,
 		Partners: seedPartners, APIIntakes: seedAPIIntakes,
 	}
 }

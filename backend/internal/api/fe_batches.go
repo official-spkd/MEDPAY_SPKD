@@ -75,6 +75,7 @@ func batchListHandler(db *gorm.DB) gin.HandlerFunc {
 		if !okScope {
 			return
 		}
+		_, _ = syncAutoBatches(c, db, currentUser(c), scope)
 		var batches []model.Batch
 		if err := whereHospital(db.Preload("CreatedBy"), "hospital_id", scope).Order("id").Find(&batches).Error; err != nil {
 			serverError(c, err)
@@ -109,24 +110,80 @@ func batchCreateHandler(db *gorm.DB) gin.HandlerFunc {
 			Period     string `json:"period"`
 			HospitalID string `json:"hospitalId"`
 			Note       string `json:"note"`
+			InsurerID  string `json:"insurerId"`
+			DateFrom   string `json:"dateFrom"`
+			DateTo     string `json:"dateTo"`
 		}
 		if !bind(c, &body) {
-			return
-		}
-		name := strings.TrimSpace(body.Name)
-		if name == "" || len([]rune(name)) > 150 {
-			fail(c, http.StatusBadRequest, "Nama batch wajib diisi (maks. 150 karakter)")
-			return
-		}
-		if !periodPattern.MatchString(body.Period) {
-			fail(c, http.StatusBadRequest, "Periode wajib berformat YYYY-MM")
 			return
 		}
 		hid, valid := resolveHospital(c, db, u, body.HospitalID)
 		if !valid {
 			return
 		}
-		b := model.Batch{Name: name, Period: body.Period, Note: body.Note, HospitalID: hid, CreatedByID: u.ID}
+		b := model.Batch{Note: body.Note, HospitalID: hid, CreatedByID: u.ID}
+
+		// Mode penjamin + rentang tanggal: nama dibuat otomatis, klaim otomatis masuk.
+		auto := strings.TrimSpace(body.InsurerID) != ""
+		var ins model.Insurer
+		var from, to time.Time
+		if auto {
+			iid, okID := parseID(body.InsurerID)
+			if !okID || db.First(&ins, "id = ?", iid).Error != nil {
+				fail(c, http.StatusBadRequest, "Penjamin tidak dikenal")
+				return
+			}
+			var e1, e2 error
+			from, e1 = time.ParseInLocation(dateLayout, body.DateFrom, engine.Location())
+			to, e2 = time.ParseInLocation(dateLayout, body.DateTo, engine.Location())
+			if e1 != nil || e2 != nil || to.Before(from) {
+				fail(c, http.StatusBadRequest, "Tanggal mulai/akhir tidak valid (YYYY-MM-DD, akhir ≥ mulai)")
+				return
+			}
+			b.InsurerID = &ins.ID
+			b.PeriodStart, b.PeriodEnd = &from, &to
+			b.Period = to.Format("2006-01")
+			b.Name = fmt.Sprintf("%s — %s s/d %s", ins.Name, body.DateFrom, body.DateTo)
+		} else {
+			name := strings.TrimSpace(body.Name)
+			if name == "" || len([]rune(name)) > 150 {
+				fail(c, http.StatusBadRequest, "Nama batch wajib diisi (maks. 150 karakter)")
+				return
+			}
+			if !periodPattern.MatchString(body.Period) {
+				fail(c, http.StatusBadRequest, "Periode wajib berformat YYYY-MM")
+				return
+			}
+			b.Name, b.Period = name, body.Period
+		}
+
+		// Kandidat otomatis: klaim RS ini, penjamin sama, belum ber-batch, Draft/Siap Diajukan,
+		// tanggal pulang dalam rentang, dan tanpa blocker terbuka.
+		var autoIDs []uuid.UUID
+		autoBlocked := 0
+		if auto {
+			d, err := loadDataset(db, &hid)
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+			for _, cl := range d.claims {
+				if cl.BatchID != nil || cl.InsurerID == nil || *cl.InsurerID != ins.ID ||
+					(cl.Status != model.ClaimDraft && cl.Status != model.ClaimReadyToSubmit) || cl.DischargeDate == nil {
+					continue
+				}
+				day := time.Date(cl.DischargeDate.Year(), cl.DischargeDate.Month(), cl.DischargeDate.Day(), 0, 0, 0, 0, from.Location())
+				if day.Before(from) || day.After(to) {
+					continue
+				}
+				if d.scrub(cl).HasOpenBlocker {
+					autoBlocked++
+					continue
+				}
+				autoIDs = append(autoIDs, cl.ID)
+			}
+		}
+
 		err := db.Transaction(func(tx *gorm.DB) error {
 			no, err := nextNo(tx, "batches", "batch_no", "BT")
 			if err != nil {
@@ -136,15 +193,23 @@ func batchCreateHandler(db *gorm.DB) gin.HandlerFunc {
 			if err := tx.Create(&b).Error; err != nil {
 				return err
 			}
+			if len(autoIDs) > 0 {
+				if err := tx.Model(&model.Claim{}).Where("id IN ? AND batch_id IS NULL", autoIDs).Update("batch_id", b.ID).Error; err != nil {
+					return err
+				}
+			}
 			return audit.Log(tx, &u, audit.Entry{Action: "CREATE_BATCH", Entity: "batch", EntityID: b.BatchNo,
-				After: b.Name, HospitalID: &hid}, metaOf(c))
+				After: fmt.Sprintf("%s (otomatis +%d, ditolak blocker %d)", b.Name, len(autoIDs), autoBlocked), HospitalID: &hid}, metaOf(c))
 		})
 		if err != nil {
 			serverError(c, err)
 			return
 		}
 		b.CreatedBy = &u
-		created(c, batchDTO(b))
+		out := batchDTO(b)
+		out["autoAdded"] = len(autoIDs)
+		out["autoBlocked"] = autoBlocked
+		created(c, out)
 	}
 }
 
@@ -156,6 +221,7 @@ func batchGetHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		hid := b.HospitalID
+		_, _ = syncAutoBatches(c, db, currentUser(c), &hid)
 		d, err := loadDataset(db, &hid)
 		if err != nil {
 			serverError(c, err)
@@ -173,7 +239,7 @@ func batchGetHandler(db *gorm.DB) gin.HandlerFunc {
 				}
 				totalGap += engine.Gap(cl)
 				claims = append(claims, claimDTO(cl, &sr))
-			case cl.BatchID == nil && (cl.Status == model.ClaimReadyToSubmit || cl.Status == model.ClaimDraft):
+			case cl.BatchID == nil && (cl.Status == model.ClaimReadyToSubmit || cl.Status == model.ClaimDraft) && sameInsurer(b, cl):
 				unbatched = append(unbatched, claimDTO(cl, &sr))
 			}
 		}
@@ -244,11 +310,15 @@ func batchAddClaimsHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		var ids []uuid.UUID
-		blocked := 0
+		blocked, otherInsurer := 0, 0
 		for _, raw := range body.ClaimIDs {
 			id, _ := parseID(raw)
 			cl := d.byID[id]
 			if cl == nil || cl.BatchID != nil || (cl.Status != model.ClaimDraft && cl.Status != model.ClaimReadyToSubmit) {
+				continue
+			}
+			if !sameInsurer(b, cl) {
+				otherInsurer++
 				continue
 			}
 			if d.scrub(cl).HasOpenBlocker {
@@ -271,7 +341,7 @@ func batchAddClaimsHandler(db *gorm.DB) gin.HandlerFunc {
 			serverError(c, err)
 			return
 		}
-		ok(c, J{"added": len(ids), "blocked": blocked})
+		ok(c, J{"added": len(ids), "blocked": blocked, "otherInsurer": otherInsurer})
 	}
 }
 
@@ -323,6 +393,20 @@ func batchSubmitHandler(db *gorm.DB) gin.HandlerFunc {
 			ID      string `json:"id"`
 			ClaimNo string `json:"claimNo"`
 			Reason  string `json:"reason"`
+		}
+		// Satu blocker terbuka di klaim mana pun dalam batch menahan seluruh batch.
+		var blocked []string
+		for _, cl := range d.claims {
+			if cl.BatchID == nil || *cl.BatchID != b.ID || (cl.Status != model.ClaimReadyToSubmit && cl.Status != model.ClaimDraft) {
+				continue
+			}
+			if sr := d.scrub(cl); sr.HasOpenBlocker {
+				blocked = append(blocked, cl.ClaimNo+" ("+strings.Join(sr.OpenBlockers(), ", ")+")")
+			}
+		}
+		if len(blocked) > 0 {
+			fail(c, http.StatusConflict, fmt.Sprintf("Batch tidak dapat diajukan: %d klaim masih punya blocker terbuka — %s. Selesaikan blocker atau keluarkan klaimnya dari batch.", len(blocked), strings.Join(blocked, "; ")))
+			return
 		}
 		var toSubmit []*model.Claim
 		skipped := []skip{}

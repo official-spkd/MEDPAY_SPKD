@@ -186,6 +186,7 @@ input, select, textarea { font-family: var(--font-body); color: var(--text-prima
   width: 30px; height: 30px; border-radius: 8px; background: var(--primary-light); color: var(--primary);
   display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
+.faskes-id .rs-filter { width: auto; min-height: 34px; padding: 4px 30px 4px 12px; font-family: var(--font-head); font-weight: 600; font-size: 13.5px; max-width: 320px; }
 .faskes-id .h-name { font-family: var(--font-head); font-weight: 600; font-size: 13.5px; color: var(--text-primary); white-space: nowrap; }
 .topbar-right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 .search-box {
@@ -464,6 +465,11 @@ textarea.input { min-height: 80px; resize: vertical; }
 .drawer-foot { padding: 13px 20px; border-top: 1px solid var(--border); display: flex; gap: 9px; flex-wrap: wrap; }
 #toasts { position: fixed; bottom: 20px; right: 20px; z-index: 120; display: flex; flex-direction: column; gap: 9px; max-width: 400px; }
 .toast { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 11px; padding: 12px 15px; box-shadow: var(--shadow-lg); font-size: 13px; animation: slideUp 0.2s ease; }
+.toast { cursor: pointer; display: flex; gap: 9px; align-items: flex-start; }
+.toast-ico { font-weight: 800; }
+.toast.success .toast-ico { color: var(--success); }
+.toast.error .toast-ico { color: var(--danger); }
+.toast.warning .toast-ico { color: var(--warning); }
 .toast.success { border-left-color: var(--success); }
 .toast.error { border-left-color: var(--danger); }
 .toast.warning { border-left-color: var(--warning); }

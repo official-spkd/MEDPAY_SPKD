@@ -24,7 +24,12 @@
             </div>
             <div class="field">
               <label>Kata Sandi</label>
-              <input class="input" v-model="password" type="password" placeholder="••••••••••••" @keyup.enter="doLogin" />
+              <div style="position:relative">
+                <input class="input" v-model="password" :type="showPassword ? 'text' : 'password'" placeholder="••••••••••••" style="padding-right:42px" @keyup.enter="doLogin" />
+                <button type="button" class="eye-btn" @click="showPassword = !showPassword" :aria-label="showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'" :title="showPassword ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'">
+                  <Icon :name="showPassword ? 'eyeOff' : 'eye'" :size="18" />
+                </button>
+              </div>
             </div>
             <button class="btn btn-grad" style="width:100%;justify-content:center" :disabled="busy" @click="doLogin">
               <span v-if="busy" class="spin" style="border-top-color:#fff" /> Masuk
@@ -65,6 +70,7 @@ import Icon from '../components/Icon.vue'
 const router = useRouter()
 const email = ref('')
 const password = ref('')
+const showPassword = ref(false)
 const mfaCode = ref('')
 const mfaStep = ref(false)
 const mfaToken = ref('') // token sementara dari backend setelah sandi benar
@@ -123,3 +129,8 @@ async function finishLogin(tok) {
   router.push('/')
 }
 </script>
+
+<style scoped>
+.eye-btn { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; background: transparent; color: var(--text-muted); border-radius: 8px; cursor: pointer; }
+.eye-btn:hover { color: var(--primary); background: var(--background); }
+</style>

@@ -85,13 +85,15 @@ const q = ref('')
 const active = ref(0)
 const inputEl = ref(null)
 
+import { routeAllowed } from '../access'
+
 // ── Katalog navigasi (selaras sidebar) ─────────────────────────────────────
 const NAV = [
   { to: '/', label: 'Dashboard', ico: 'dashboard', group: 'Utama', desc: 'Ringkasan eksekutif revenue cycle', kw: 'beranda home ringkasan' },
   { to: '/workqueue', label: 'Antrean Kerja', ico: 'queue', group: 'Utama', desc: 'Tindakan & penugasan', kw: 'tugas workitem todo' },
   { to: '/claims', label: 'Daftar Klaim', ico: 'claims', group: 'Klaim', desc: 'Klaim COB penjamin kedua', kw: 'klaim cob daftar list' },
-  { to: '/claims/new', label: 'Klaim Baru', ico: 'plus', group: 'Klaim', desc: 'Buat klaim COB', kw: 'buat tambah tambah klaim' },
-  { to: '/scrubber', label: 'Validasi (Scrubber)', ico: 'shieldCheck', group: 'Klaim', desc: 'Aturan validasi & blocker', kw: 'validasi rule blocker scrub' },
+  { to: '/claims/new', label: 'Klaim Baru', ico: 'plus', group: 'Klaim', desc: 'Buat klaim COB (manual atau unggah CSV)', kw: 'buat tambah klaim baru unggah csv import' },
+  { to: '/scrubber', label: 'Library Aturan', ico: 'shieldCheck', group: 'Klaim', desc: 'Aturan validasi & blocker', kw: 'validasi scrubber rule aturan blocker scrub' },
   { to: '/batches', label: 'Batch & Pengajuan', ico: 'layers', group: 'Klaim', desc: 'Kelompok klaim per penjamin', kw: 'batch kirim pengajuan' },
   { to: '/payments', label: 'Pembayaran', ico: 'wallet', group: 'Uang', desc: 'Pembayaran & rekonsiliasi bank', kw: 'bayar rekonsiliasi mutasi bank' },
   { to: '/aging', label: 'Piutang (AR Aging)', ico: 'clock', group: 'Uang', desc: 'Umur piutang & DSO', kw: 'piutang aging dso ar' },
@@ -107,6 +109,7 @@ const NAV = [
 const navAvailable = computed(() => NAV.filter(n => {
   if (n.roles && !n.roles.includes(state.user?.role)) return false
   if (n.perm && !hasPerm(n.perm)) return false
+  if (!routeAllowed(n.to)) return false
   return true
 }))
 

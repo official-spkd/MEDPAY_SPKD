@@ -22,7 +22,7 @@
         <table class="tbl">
           <thead><tr><th>Item</th><th>Sumber</th><th>Klaim</th><th>Ditugaskan</th><th>Prioritas</th><th>Status</th><th>Tenggat</th></tr></thead>
           <tbody>
-            <tr v-for="w in items" :key="w.workItem.id" @click="sel = w.workItem" :style="sel && sel.id === w.workItem.id ? 'background:var(--teal-bg)' : ''">
+            <tr v-for="w in items" :key="w.workItem.id" @click="select(w.workItem)" style="cursor:pointer" :style="sel && sel.id === w.workItem.id ? 'background:var(--teal-bg)' : ''">
               <td style="max-width:300px">{{ w.workItem.title }}</td>
               <td><span class="badge navy">{{ refLabel('work_item_source', w.workItem.source) }}</span></td>
               <td class="mono" style="font-size:11.5px">{{ w.workItem.claimNo || w.workItem.claimId || '—' }}</td>
@@ -37,7 +37,10 @@
       </div>
 
       <div class="card card-pad" v-if="sel">
-        <div class="card-title">{{ sel.title }}</div>
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div class="card-title">{{ sel.title }}</div>
+          <button class="x-btn" @click="closeDetail" aria-label="Tutup panel detail">✕</button>
+        </div>
         <div class="card-sub">{{ docNo(sel, 'itemNo') }} · {{ refLabel('work_item_source', sel.source) }} · dibuat {{ formatDateTime(sel.createdAt) }}</div>
         <div class="field">
           <label>Status</label>
@@ -114,14 +117,17 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
-import { state, hasPerm, toast, loadBoot } from '../store'
+import { state, hasPerm, toast, loadBoot, refreshBoot } from '../store'
 import Modal from '../components/Modal.vue'
 import Empty from '../components/Empty.vue'
 import PageHeader from '../components/PageHeader.vue'
 import Icon from '../components/Icon.vue'
 import { formatDate, formatDateTime, addDays, ROLE_LABELS, docNo, refOptions, refLabel, refTone } from '../format'
 
+const route = useRoute()
+const router = useRouter()
 const statuses = computed(() => refOptions('work_item_status'))
 const priorities = computed(() => refOptions('work_item_priority'))
 const sources = computed(() => refOptions('work_item_source'))
@@ -133,15 +139,31 @@ const comment = ref('')
 const showNew = ref(false)
 const newItem = ref({ title: '', source: 'SCRUBBER', priority: 'Sedang', claimId: '', dueDate: addDays(new Date().toISOString().slice(0, 10), 3) })
 
+// Data lama bisa berisi comments/history null; pastikan selalu array agar panel tidak crash.
+function normalize(w) { return { ...w, comments: w.comments || [], history: w.history || [] } }
+
 async function load() {
   const params = new URLSearchParams()
   if (fStatus.value) params.set('status', fStatus.value)
   if (fSource.value) params.set('source', fSource.value)
-  items.value = await api('work-items?' + params.toString())
+  const res = await api('work-items?' + params.toString())
+  items.value = res.map(r => ({ ...r, workItem: normalize(r.workItem) }))
   if (sel.value) {
     const found = items.value.find(x => x.workItem.id === sel.value.id)
     sel.value = found ? found.workItem : null
   }
+  refreshBoot() // badge Antrean Kerja di sidebar ikut ter-update
+}
+
+// Detail tampil sebagai panel di kanan (bukan halaman baru). ID item disimpan di query
+// dengan replace agar tombol Back tidak menumpuk riwayat & tetap kembali dari menu Antrean Kerja.
+function select(w) {
+  sel.value = w
+  router.replace({ path: '/workqueue', query: { item: w.id } })
+}
+function closeDetail() {
+  sel.value = null
+  router.replace({ path: '/workqueue' })
 }
 
 function assigneeName(id) {
@@ -152,7 +174,7 @@ function assigneeName(id) {
 
 async function update(patch) {
   try {
-    sel.value = await api('work-items/' + sel.value.id, { method: 'PUT', body: patch })
+    sel.value = normalize(await api('work-items/' + sel.value.id, { method: 'PUT', body: patch }))
     toast('Work item diperbarui.', 'success')
     await load()
   } catch (e) { toast(e.message, 'error') }
@@ -160,7 +182,7 @@ async function update(patch) {
 
 async function addComment() {
   try {
-    sel.value = await api('work-items/' + sel.value.id + '/comments', { method: 'POST', body: { text: comment.value } })
+    sel.value = normalize(await api('work-items/' + sel.value.id + '/comments', { method: 'POST', body: { text: comment.value } }))
     comment.value = ''
     await load()
   } catch (e) { toast(e.message, 'error') }
@@ -176,5 +198,10 @@ async function create() {
   } catch (e) { toast(e.message, 'error') }
 }
 
-onMounted(async () => { await loadBoot(); await load() })
+onMounted(async () => {
+  await loadBoot()
+  await load()
+  const id = route.query.item
+  if (id) sel.value = items.value.find(x => x.workItem.id === String(id))?.workItem || null
+})
 </script>

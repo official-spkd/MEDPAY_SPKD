@@ -51,21 +51,23 @@
     </div>
 
     <div class="card card-pad">
-      <div class="card-title">Drill-down Klaim Tertunggak</div>
-      <div class="card-sub">Diurutkan dari yang paling tua. Setiap angka dapat ditelusuri ke klaim sumbernya.</div>
+      <div class="card-title">Drill-down Klaim Tertunggak (per Batch)</div>
+      <div class="card-sub">Dikelompokkan per batch pengajuan, diurutkan dari tenggat terlama. Klik batch untuk melihat klaim di dalamnya. Klaim yang belum masuk batch dikelompokkan di "Tanpa Batch".</div>
       <div class="tbl-wrap" style="max-height:380px;overflow-y:auto">
         <table class="tbl" style="min-width:640px">
-          <thead><tr><th>Klaim</th><th>Pasien</th><th>Penjamin</th><th>Status</th><th class="num">Tertunggak</th><th class="num">Umur</th></tr></thead>
+          <thead><tr><th>Batch</th><th>Penjamin</th><th class="num">Klaim</th><th class="num">Tertunggak</th><th class="num">Tenggat</th></tr></thead>
           <tbody>
-            <tr v-for="r in a.drilldown || []" :key="r.id" @click="$router.push('/claims?open=' + r.id + '&q=' + encodeURIComponent(docNo(r)))">
-              <td class="mono">{{ docNo(r) }}</td>
-              <td>{{ r.patientName }}</td>
-              <td style="font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ r.insurer }}</td>
-              <td><span class="badge" :class="CLAIM_TONE[r.status]">{{ CLAIM_LABELS[r.status] }}</span></td>
-              <td class="num" style="font-weight:700">{{ formatRp(r.amount) }}</td>
-              <td class="num"><span class="badge" :class="r.ageDays > 90 ? 'danger' : r.ageDays > 60 ? 'warning' : 'neutral'">{{ r.ageDays }} hari</span></td>
+            <tr v-for="g in batchRows" :key="g.key" :style="g.batchId ? 'cursor:pointer' : ''" @click="g.batchId && $router.push('/batches?open=' + g.batchId)">
+              <td>
+                <div style="font-weight:600">{{ g.batchId ? g.name : 'Tanpa Batch' }}</div>
+                <div class="mono" style="font-size:11px;color:var(--text-muted)">{{ g.batchId ? g.batchNo : 'belum masuk batch' }}</div>
+              </td>
+              <td style="font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ g.insurers.join(', ') }}</td>
+              <td class="num">{{ g.count }}</td>
+              <td class="num" style="font-weight:700">{{ formatRp(g.amount) }}</td>
+              <td class="num"><span class="badge" :class="g.maxAge > 90 ? 'danger' : g.maxAge > 60 ? 'warning' : 'neutral'">{{ g.maxAge }} hari</span></td>
             </tr>
-            <tr v-if="!(a.drilldown || []).length"><td colspan="6"><Empty icon="✅" title="Tidak ada piutang" desc="Seluruh klaim lunas / tidak ada outstanding." /></td></tr>
+            <tr v-if="!batchRows.length"><td colspan="5"><Empty icon="✅" title="Tidak ada piutang" desc="Seluruh klaim lunas / tidak ada outstanding." /></td></tr>
           </tbody>
         </table>
       </div>
@@ -92,13 +94,27 @@ async function load() {
 }
 
 const bucketBars = computed(() => (a.value.buckets || []).map(b => ({ label: b.label, value: b.amount })))
+// Drill-down per batch: jumlahkan tertunggak, hitung klaim, dan ambil umur terlama sebagai tenggat.
+const batchRows = computed(() => {
+  const map = new Map()
+  for (const r of a.value.drilldown || []) {
+    const key = r.batchId || '_none'
+    let g = map.get(key)
+    if (!g) { g = { key, batchId: r.batchId || '', batchNo: r.batchNo, name: r.batchName || r.batchNo, count: 0, amount: 0, maxAge: 0, insurers: [] }; map.set(key, g) }
+    g.count++
+    g.amount += r.amount
+    g.maxAge = Math.max(g.maxAge, r.ageDays)
+    if (r.insurer && !g.insurers.includes(r.insurer)) g.insurers.push(r.insurer)
+  }
+  return [...map.values()].sort((x, y) => y.maxAge - x.maxAge)
+})
 const pctOver90 = computed(() => (a.value.pctOver90 ?? 0).toFixed(1).replace('.', ','))
 
 function rateColor(r) { return r >= 80 ? 'var(--success)' : r >= 60 ? 'var(--warning)' : 'var(--danger)' }
 
 function exportCsv() {
-  const rows = [['Klaim', 'Pasien', 'Penjamin', 'Status', 'Tertunggak', 'Umur (hari)']]
-  for (const r of a.value.drilldown || []) rows.push([docNo(r), r.patientName, r.insurer, CLAIM_LABELS[r.status], r.amount, r.ageDays])
+  const rows = [['Batch', 'Nama Batch', 'Penjamin', 'Jumlah Klaim', 'Tertunggak', 'Tenggat (hari)']]
+  for (const g of batchRows.value) rows.push([g.batchId ? g.batchNo : 'Tanpa Batch', g.batchId ? g.name : '', g.insurers.join(', '), g.count, g.amount, g.maxAge])
   downloadBlobCsv('piutang-medpay.csv', rows)
 }
 

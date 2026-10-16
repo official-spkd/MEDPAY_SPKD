@@ -147,14 +147,29 @@ function initSeq(d) {
   })
 }
 
+// Data awal (data.json / sessionStorage lama) menyimpan null pada kolom array; ubah ke []
+// agar halaman detail klaim & antrean kerja tidak crash saat memanggil .join()/.length.
+function normalizeDb(d) {
+  ;(d.claims || []).forEach((c) => {
+    c.secondaryDiagnoses = c.secondaryDiagnoses || []
+    c.procedures = c.procedures || []
+  })
+  ;(d.workItems || []).forEach((w) => {
+    w.comments = w.comments || []
+    w.history = w.history || []
+  })
+  return d
+}
+
 function loadDb() {
   if (db) return db
   try {
     const raw = sessionStorage.getItem(STORAGE_KEY)
-    if (raw) { db = JSON.parse(raw); return db }
+    if (raw) { db = normalizeDb(JSON.parse(raw)); return db }
   } catch { /* abaikan */ }
   db = JSON.parse(JSON.stringify(seedData))
   db.overrides = db.overrides || {}
+  normalizeDb(db)
   shiftDates(db, daysBetween(SEED_DATE, todayISO()))
   initSeq(db)
   return db
@@ -491,6 +506,19 @@ function handleVerifyMFA({ body }) {
 const handleLogout = () => ok({ ok: true })
 const handleMe = ({ user }) => ok({ user: publicUser(user), permissions: ROLE_PERMS[user.role] || [] })
 
+// Notifikasi untuk bootstrap: terbaru di atas, dilengkapi recipientUserId (dari email penerima),
+// claimNo, dan flag read — sama seperti respons backend — agar badge lonceng menghitung dengan benar.
+function notificationsFor() {
+  return [...db.notifications]
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)))
+    .map((n) => ({
+      ...n,
+      recipientUserId: n.recipientUserId || db.users.find((u) => u.email === n.recipient)?.id || '',
+      claimNo: n.claimNo || n.claimId || '',
+      read: !!n.read,
+    }))
+}
+
 function handleBootstrap({ user }) {
   const hospitals = user.hospitalId ? db.hospitals.filter((h) => h.id === user.hospitalId) : db.hospitals
   // Ringkasan klaim + work item untuk badge sidebar & pencarian global (Ctrl+K).
@@ -503,7 +531,7 @@ function handleBootstrap({ user }) {
     .map((wi) => ({ id: wi.id, title: wi.title, status: wi.status, assignee: wi.assignee, role: wi.role, priority: wi.priority, claimId: wi.claimId }))
   return ok({
     hospitals, users: db.users.map(publicUser), insurers: db.insurers, rejectionCodes: db.rejectionCodes,
-    scrubRules: db.scrubRules, regulations: db.regulations, notifications: db.notifications,
+    scrubRules: db.scrubRules, regulations: db.regulations, notifications: notificationsFor(),
     partners: user.role === 'SUPER_ADMIN' ? db.partners : [], claimLabels: CLAIM_LABELS,
     componentLabels: COMPONENT_LABELS, specialCmgLabels: SPECIAL_CMG_LABELS, resumeCategories: RESUME_CATEGORIES,
     claims, workItems,
@@ -644,7 +672,8 @@ function handleAging({ user, query }) {
     outstanding[c.id] = o
     basisDate[c.id] = bd
     const ins = insurerByID(c.insurerId)
-    drill.push({ id: c.id, patientName: c.patientName, sepNo: c.sepNo, insurer: ins ? ins.name : '', status: c.status, amount: o, ageDays: daysBetween(bd, T) })
+    drill.push({ id: c.id, patientName: c.patientName, sepNo: c.sepNo, insurer: ins ? ins.name : '', status: c.status, amount: o, ageDays: daysBetween(bd, T),
+      batchId: c.batchId || '', batchNo: c.batchId || '', batchName: (db.batches.find((b) => b.id === c.batchId) || {}).name || '' })
   }
   const { buckets, total } = agingBuckets(outstanding, basisDate, T)
   drill.sort((a, b) => b.ageDays - a.ageDays)
@@ -901,7 +930,29 @@ function handleResumeDelete({ user, params }) {
 // ── Handler: Batch ───────────────────────────────────────────────────────────
 const findBatch = (id) => db.batches.find((b) => b.id === id) || null
 
+// Klaim bebas blocker otomatis masuk ke batch per-penjamin yang cocok & masih terbuka
+// (penjamin sama, tanggal pulang dalam rentang, Draft/Siap Diajukan, belum ber-batch).
+function syncAutoBatches(user) {
+  const T = todayISO()
+  const batches = db.batches.filter((b) => b.insurerId && b.periodStart && (!user || !user.hospitalId || b.hospitalId === user.hospitalId))
+  for (const b of batches) {
+    // Batch yang sudah berisi klaim diajukan dianggap tertutup.
+    if (db.claims.some((c) => c.batchId === b.id && !['draft', 'ready_to_submit'].includes(c.status))) continue
+    let n = 0
+    for (const c of db.claims) {
+      if (c.batchId || c.hospitalId !== b.hospitalId || c.insurerId !== b.insurerId) continue
+      if (!['draft', 'ready_to_submit'].includes(c.status)) continue
+      const day = (c.dischargeDate || '').slice(0, 10)
+      if (!day || day < b.periodStart || day > b.periodEnd) continue
+      if (evaluateClaim(c, T).hasOpenBlocker) continue
+      c.batchId = b.id
+      n++
+    }
+    if (n) audit(user || { id: 'system', name: 'Sistem', role: 'SYSTEM' }, 'BATCH_AUTO_ADD', 'batch', b.id, '', `+${n} klaim bebas blocker masuk otomatis`)
+  }
+}
 function handleBatchList({ user }) {
+  syncAutoBatches(user)
   return ok(db.batches
     .filter((b) => !user.hospitalId || b.hospitalId === user.hospitalId)
     .map((b) => {
@@ -912,20 +963,44 @@ function handleBatchList({ user }) {
 function handleBatchCreate({ user, body }) {
   const b = {
     id: '', name: str(body.name), period: str(body.period), hospitalId: str(body.hospitalId),
-    createdAt: '', createdBy: '', note: str(body.note),
+    createdAt: '', createdBy: '', note: str(body.note), insurerId: null, periodStart: '', periodEnd: '',
   }
   if (!b.hospitalId) b.hospitalId = user.hospitalId
   if (user.hospitalId && b.hospitalId !== user.hospitalId) return fail(403, 'Di luar cakupan RS Anda')
+  // Mode penjamin + rentang tanggal: nama otomatis, klaim penjamin tsb (tanggal pulang dalam rentang) otomatis masuk.
+  const ins = body.insurerId ? db.insurers.find((i) => i.id === body.insurerId) : null
+  if (body.insurerId && !ins) return fail(400, 'Penjamin tidak dikenal')
+  if (ins) {
+    const from = str(body.dateFrom), to = str(body.dateTo)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || to < from) return fail(400, 'Tanggal mulai/akhir tidak valid (YYYY-MM-DD, akhir ≥ mulai)')
+    b.insurerId = ins.id; b.periodStart = from; b.periodEnd = to
+    b.period = to.slice(0, 7)
+    b.name = `${ins.name} — ${from} s/d ${to}`
+  } else if (!b.name) return fail(400, 'Nama batch wajib diisi')
   b.id = nextID('BT')
   b.createdBy = user.name
   b.createdAt = nowStamp()
   db.batches.push(b)
-  audit(user, 'CREATE_BATCH', 'batch', b.id, '', b.name)
-  return ok(b, 201)
+  let autoAdded = 0, autoBlocked = 0
+  if (ins) {
+    const T = todayISO()
+    for (const c of db.claims) {
+      if (c.hospitalId !== b.hospitalId || c.batchId || c.insurerId !== ins.id) continue
+      if (!['draft', 'ready_to_submit'].includes(c.status)) continue
+      const day = (c.dischargeDate || '').slice(0, 10)
+      if (!day || day < b.periodStart || day > b.periodEnd) continue
+      if (evaluateClaim(c, T).hasOpenBlocker) { autoBlocked++; continue }
+      c.batchId = b.id
+      autoAdded++
+    }
+  }
+  audit(user, 'CREATE_BATCH', 'batch', b.id, '', `${b.name} (otomatis +${autoAdded}, ditolak blocker ${autoBlocked})`)
+  return ok({ ...b, autoAdded, autoBlocked }, 201)
 }
 function handleBatchGet({ user, params }) {
   const b = findBatch(params[0])
   if (!b || (user.hospitalId && b.hospitalId !== user.hospitalId)) return fail(404, 'Batch tidak ditemukan')
+  syncAutoBatches(user)
   const T = todayISO()
   const d = { batch: b, claims: [], unbatched: [], totalGap: 0, blockerHits: 0 }
   for (const c of db.claims) {
@@ -934,7 +1009,7 @@ function handleBatchGet({ user, params }) {
       if (evaluateClaim(c, T).hasOpenBlocker) d.blockerHits++
       d.totalGap += claimGap(c)
       d.claims.push(c)
-    } else if (!c.batchId && (c.status === 'ready_to_submit' || c.status === 'draft')) d.unbatched.push(c)
+    } else if (!c.batchId && (c.status === 'ready_to_submit' || c.status === 'draft') && (!b.insurerId || c.insurerId === b.insurerId)) d.unbatched.push(c)
   }
   return ok(d)
 }
@@ -949,16 +1024,17 @@ function handleBatchAddClaims({ user, params, body }) {
   const b = findBatch(params[0])
   if (!b || (user.hospitalId && b.hospitalId !== user.hospitalId)) return fail(404, 'Batch tidak ditemukan')
   const T = todayISO()
-  let added = 0, blocked = 0
+  let added = 0, blocked = 0, otherInsurer = 0
   for (const cid of body.claimIds || []) {
     const c = claimByID(cid)
     if (!c || c.hospitalId !== b.hospitalId || c.batchId) continue
+    if (b.insurerId && c.insurerId !== b.insurerId) { otherInsurer++; continue }
     if (evaluateClaim(c, T).hasOpenBlocker) { blocked++; continue }
     c.batchId = b.id
     added++
   }
   audit(user, 'BATCH_ADD_CLAIMS', 'batch', b.id, '', `+${added} (ditolak blocker: ${blocked})`)
-  return ok({ added, blocked })
+  return ok({ added, blocked, otherInsurer })
 }
 function handleBatchRemoveClaim({ user, params }) {
   const [id, cid] = params
@@ -1007,9 +1083,61 @@ function handlePaymentCreate({ user, body }) {
   audit(user, 'PAYMENT_RECORD', 'claim', c.id, '', `${p.id} → ${p.amount} (${p.payer})`)
   db.notifications.push({
     id: nextID('NT'), at: nowStamp(), channel: 'IN_APP', template: 'PAYMENT_RECEIVED', claimId: c.id,
-    recipient: 'finance@nusantara.id', message: `Pembayaran diterima untuk klaim ${c.patientName} (${p.id})`, status: 'TERKIRIM',
+    recipient: 'finance@nusantara.id', recipientUserId: db.users.find((u) => u.email === 'finance@nusantara.id')?.id || '', message: `Pembayaran diterima untuk klaim ${c.patientName} (${p.id})`, status: 'TERKIRIM',
   })
   return ok({ payment: p, warning, claimStatus: c.status, totalPaid: paidAmount(c.id), gap: g }, 201)
+}
+// ── Pembayaran per batch: penjamin membayar satu batch sekaligus, dibagi ke klaim di dalamnya ──
+const batchPayable = (c) => ['approved', 'partially_approved', 'partially_paid'].includes(c.status)
+function handlePaymentBatches({ user }) {
+  const out = []
+  for (const b of db.batches) {
+    if (user.hospitalId && b.hospitalId !== user.hospitalId) continue
+    const cs = db.claims.filter((c) => c.batchId === b.id)
+    const payable = cs.filter(batchPayable)
+    if (!payable.length) continue
+    let gap = 0, paid = 0, remaining = 0
+    for (const c of payable) { const g = claimGap(c), p = paidAmount(c.id); gap += g; paid += p; remaining += Math.max(0, g - p) }
+    out.push({ batch: b, claimCount: cs.length, payableCount: payable.length, gap, paid, remaining })
+  }
+  return ok(out)
+}
+function handlePaymentBatchCreate({ user, body }) {
+  const b = db.batches.find((x) => x.id === body.batchId)
+  if (!b || (user.hospitalId && b.hospitalId !== user.hospitalId)) return fail(404, 'Batch tidak ditemukan')
+  const amount = num(body.amount)
+  if (amount <= 0) return fail(400, 'Nominal pembayaran harus > 0')
+  const slots = db.claims.filter((c) => c.batchId === b.id && batchPayable(c))
+    .sort((x, y) => String(x.id).localeCompare(String(y.id)))
+    .map((c) => ({ c, rem: Math.max(0, claimGap(c) - paidAmount(c.id)) })).filter((s) => s.rem > 0)
+  const total = slots.reduce((a, s) => a + s.rem, 0)
+  if (!total) return fail(409, 'Batch ini tidak memiliki tagihan yang menunggu pembayaran')
+  if (amount > total) return fail(409, `Nominal melebihi sisa tagihan batch (sisa Rp ${total})`)
+  const ref = str(body.transferRef)
+  const warning = ref && db.payments.some((x) => x.transferRef === ref) ? 'Potensi duplikasi: referensi transfer sudah pernah dicatat' : ''
+  const parts = []
+  let left = amount
+  for (const s of slots) {
+    if (left <= 0) break
+    const amt = Math.min(s.rem, left)
+    left -= amt
+    const p = {
+      id: nextID('PAY'), claimId: s.c.id, receivedDate: str(body.receivedDate) || todayISO(), amount: amt,
+      payer: str(body.payer), transferRef: ref, notes: (str(body.notes) + ' [Batch ' + b.id + ']').trim(),
+      createdBy: user.name, createdAt: nowStamp(), allocation: str(body.allocation) || 'GAP',
+    }
+    db.payments.push(p)
+    recomputePaymentStatus(s.c)
+    s.c.updatedAt = nowStamp()
+    audit(user, 'PAYMENT_RECORD', 'claim', s.c.id, '', `${p.id} → ${p.amount} (${p.payer}, batch ${b.id})`)
+    parts.push({ claimNo: s.c.id, amount: amt, status: s.c.status })
+  }
+  db.notifications.push({
+    id: nextID('NT'), at: nowStamp(), channel: 'IN_APP', template: 'PAYMENT_RECEIVED', claimId: parts.length ? slots[0].c.id : null,
+    recipient: 'finance@nusantara.id', recipientUserId: db.users.find((u) => u.email === 'finance@nusantara.id')?.id || '',
+    message: `Pembayaran batch ${b.id} diterima: Rp ${amount} untuk ${parts.length} klaim`, status: 'TERKIRIM',
+  })
+  return ok({ batch: b, parts, totalPaid: amount, remaining: total - amount, warning }, 201)
 }
 function handlePaymentDelete({ user, params }) {
   const i = db.payments.findIndex((p) => p.id === params[0])
@@ -1402,6 +1530,12 @@ function handleNotifReadAll() {
 function handleBatchSubmit({ user, params }) {
   const b = db.batches.find((x) => x.id === params[0])
   if (!b || (user.hospitalId && b.hospitalId !== user.hospitalId)) return fail(404, 'Batch tidak ditemukan')
+  // Satu blocker terbuka di klaim mana pun dalam batch menahan seluruh batch.
+  const T = todayISO()
+  const blocked = db.claims
+    .filter((x) => x.batchId === b.id && ['draft', 'ready_to_submit'].includes(x.status) && evaluateClaim(x, T).hasOpenBlocker)
+    .map((x) => x.id)
+  if (blocked.length) return fail(409, `Batch tidak dapat diajukan: ${blocked.length} klaim masih punya blocker terbuka — ${blocked.join(', ')}. Selesaikan blocker atau keluarkan klaimnya dari batch.`)
   const submitted = [], skipped = []
   for (const c of db.claims.filter((x) => x.batchId === b.id)) {
     if (c.status !== 'ready_to_submit') { skipped.push({ id: c.id, claimNo: c.id, reason: 'status ' + c.status }); continue }
@@ -1488,6 +1622,8 @@ const ROUTES = [
   ['POST', /^batches\/([^/]+)\/submit$/, 'APPROVE', handleBatchSubmit],
 
   ['GET', /^payments$/, 'VIEW', handlePaymentList],
+  ['GET', /^payments\/batches$/, 'VIEW', handlePaymentBatches],
+  ['POST', /^payments\/batch$/, 'CREATE', handlePaymentBatchCreate],
   ['POST', /^payments$/, 'CREATE', handlePaymentCreate],
   ['DELETE', /^payments\/([^/]+)$/, 'EDIT', handlePaymentDelete],
   ['POST', /^bank-imports$/, 'CREATE', handleBankImportCreate],
@@ -1556,6 +1692,12 @@ export async function mockRequest(method, rawPath, body, token) {
     }
   }
 
+  // Filter RS Super Admin: ?hospitalId= membatasi data baca (seperti scope backend).
+  const hf = query.get('hospitalId')
+  if (user && !user.hospitalId && hf && path !== 'bootstrap' && (method === 'GET' || path === 'kapj/simulate')) {
+    user = { ...user, hospitalId: hf }
+  }
+
   let res
   try {
     res = route[3]({ user, params, query, body: body || {} })
@@ -1563,6 +1705,8 @@ export async function mockRequest(method, rawPath, body, token) {
     console.error('[mock-api]', method, rawPath, e)
     return { status: 500, data: { error: 'Kesalahan internal mock API: ' + (e && e.message) } }
   }
+  // Setelah aksi yang bisa menyelesaikan blocker, klaim bersih langsung masuk batch yang cocok.
+  if (method !== 'GET' && res.status < 300 && /^(claims|resume|scrub-rules)/.test(path)) syncAutoBatches(user)
   if (method !== 'GET') persist()
   return { ...res, data: clone(res.data) }
 }

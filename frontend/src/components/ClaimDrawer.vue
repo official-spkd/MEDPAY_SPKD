@@ -16,6 +16,11 @@
         <button class="x-btn" @click="$emit('close')" aria-label="Tutup">✕</button>
       </div>
       <div class="drawer-body" v-if="d">
+        <div class="alert danger" v-if="submitBlocked" style="margin-bottom:12px">
+          <span>⛔</span>
+          <span><b>Belum bisa disiapkan/diajukan:</b> masih ada {{ openBlockers.length }} blocker terbuka ({{ openBlockers.map(f => f.ruleId).join(', ') }}). Selesaikan dulu semua blocker.
+            <button class="btn btn-outline btn-xs" style="margin-left:8px" @click="tab = 'riwayat'">Lihat blocker</button></span>
+        </div>
         <div class="tabs">
           <button class="tab" :class="{ active: tab === 'ringkasan' }" @click="tab = 'ringkasan'">Ringkasan</button>
           <button class="tab" :class="{ active: tab === 'tarif' }" @click="tab = 'tarif'">Rantai Tarif</button>
@@ -35,8 +40,8 @@
             <span class="k">Jenis Rawat</span><span class="v">{{ refLabel('care_type', d.claim.careType) }} · Kelas {{ d.claim.careClass }}</span>
             <span class="k">Masuk → Pulang</span><span class="v">{{ formatDate(d.claim.admissionDate) }} → {{ formatDate(d.claim.dischargeDate) }} ({{ d.claim.los }} hari, otomatis)</span>
             <span class="k">Diagnosa Utama</span><span class="v mono">{{ d.claim.primaryDiagnosis }}</span>
-            <span class="k">Diagnosa Sekunder</span><span class="v mono">{{ d.claim.secondaryDiagnoses.join(', ') || '—' }}</span>
-            <span class="k">Prosedur (ICD-9-CM)</span><span class="v mono">{{ d.claim.procedures.join(', ') || '—' }}</span>
+            <span class="k">Diagnosa Sekunder</span><span class="v mono">{{ (d.claim.secondaryDiagnoses || []).join(', ') || '—' }}</span>
+            <span class="k">Prosedur (ICD-9-CM)</span><span class="v mono">{{ (d.claim.procedures || []).join(', ') || '—' }}</span>
             <span class="k">Deadline Pengajuan</span><span class="v">{{ formatDate(deadline.deadline) }} <span class="badge" :class="zoneTone">{{ zoneLabel }}</span> <span class="verify-tag">[VR]</span></span>
             <span class="k">Penjamin Kedua</span><span class="v">{{ d.insurer?.name || '—' }}</span>
             <span class="k">No. Polis / Tertanggung</span><span class="v">{{ d.claim.policyNo || '—' }} / {{ d.claim.insuredName || '—' }}</span>
@@ -57,14 +62,14 @@
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px" class="two-panel">
               <div>
                 <div class="tarif-row"><span>Tarif INA-CBG Murni</span><b>{{ formatRp(d.claim.inacbgBaseTariff) }}</b></div>
-                <div v-for="k in SPECIAL_CMG_KEYS" :key="k" class="tarif-row" v-show="d.claim.specialCmg[k]">
-                  <span>{{ SPECIAL_CMG_LABELS[k] }}</span><span>{{ formatRp(d.claim.specialCmg[k]) }}</span>
+                <div v-for="k in SPECIAL_CMG_KEYS" :key="k" class="tarif-row" v-show="(d.claim.specialCmg || {})[k]">
+                  <span>{{ SPECIAL_CMG_LABELS[k] }}</span><span>{{ formatRp((d.claim.specialCmg || {})[k]) }}</span>
                 </div>
                 <div class="tarif-row total"><span>Total Tarif JKN <small>(dibayar BPJS)</small></span><span>{{ formatRp(jkn) }}</span></div>
               </div>
               <div>
-                <div v-for="k in TARIFF_COMPONENT_KEYS" :key="k" class="tarif-row" v-show="d.claim.hospitalTariff[k]">
-                  <span>{{ COMPONENT_LABELS[k] }}</span><span>{{ formatRp(d.claim.hospitalTariff[k]) }}</span>
+                <div v-for="k in TARIFF_COMPONENT_KEYS" :key="k" class="tarif-row" v-show="(d.claim.hospitalTariff || {})[k]">
+                  <span>{{ COMPONENT_LABELS[k] }}</span><span>{{ formatRp((d.claim.hospitalTariff || {})[k]) }}</span>
                 </div>
                 <div class="tarif-row total"><span>Total Tagihan RS (18 komponen)</span><span>{{ formatRp(hosp) }}</span></div>
               </div>
@@ -90,13 +95,13 @@
             <span class="hint" v-if="resumeCount">{{ resumeReviewed }}/{{ resumeCount }} item direview</span>
           </div>
           <div class="alert info" v-if="hasPerm('CREATE')"><span>📄</span><span>Format CSV: <code>sep;kategori;nama_item;sub_kategori;tanggal;hasil_catatan;jumlah;satuan;harga_satuan</code>. Hanya baris dengan SEP yang cocok dengan klaim ini yang diimpor.</span></div>
-          <div v-if="!d.resume.length"><Empty icon="📁" title="Belum ada resume medis" desc="Unggah CSV resume medis (7 kategori) dan review setiap item sebelum generate paket dokumen." /></div>
+          <div v-if="!(d.resume || []).length"><Empty icon="📁" title="Belum ada resume medis" desc="Unggah CSV resume medis (7 kategori) dan review setiap item sebelum generate paket dokumen." /></div>
           <div v-else>
             <div class="tbl-wrap" style="max-height:340px;overflow-y:auto">
               <table class="tbl" style="min-width:560px">
                 <thead><tr><th>Kategori</th><th>Item</th><th>Tanggal</th><th class="num">Subtotal</th><th>Reviewed</th></tr></thead>
                 <tbody>
-                  <tr v-for="r in d.resume" :key="r.id">
+                  <tr v-for="r in d.resume || []" :key="r.id">
                     <td><span class="badge neutral">{{ catLabel(r.kategori) }}</span></td>
                     <td>
                       <div style="font-weight:600">{{ r.namaItem }}</div>
@@ -126,11 +131,11 @@
             <Kpi label="Sudah Dibayar" :value="formatRp(paidSum)" tone="success" val-class="success" />
             <Kpi label="Tertunggak" :value="formatRp(Math.max(0, d.gap - paidSum))" tone="warning" val-class="warning" />
           </div>
-          <div class="tbl-wrap" v-if="d.payments.length">
+          <div class="tbl-wrap" v-if="(d.payments || []).length">
             <table class="tbl" style="min-width:520px">
               <thead><tr><th>ID</th><th>Tanggal</th><th class="num">Nominal</th><th>Payer</th><th>Ref</th><th>Oleh</th></tr></thead>
               <tbody>
-                <tr v-for="p in d.payments" :key="p.id">
+                <tr v-for="p in d.payments || []" :key="p.id">
                   <td class="mono">{{ docNo(p, 'paymentNo') }}</td>
                   <td>{{ formatDate(p.receivedDate) }}</td>
                   <td class="num" style="font-weight:700">{{ formatRp(p.amount) }}</td>
@@ -150,8 +155,8 @@
           <div class="card card-pad" style="margin-bottom:12px">
             <div class="card-title">Hasil Validasi (Scrubber)</div>
             <div class="card-sub">Dijalankan otomatis saat buka klaim. BLOCKER terbuka memblokir masuk batch & pengajuan.</div>
-            <div v-if="!d.claim.scrubFindings.length"><Empty icon="✅" title="Bersih" desc="Tidak ada temuan aturan." /></div>
-            <div v-for="f in d.claim.scrubFindings" :key="f.ruleId" class="alert" :class="f.severity === 'BLOCKER' ? 'danger' : 'warning'" style="margin-bottom:8px">
+            <div v-if="!(d.claim.scrubFindings || []).length"><Empty icon="✅" title="Bersih" desc="Tidak ada temuan aturan." /></div>
+            <div v-for="f in d.claim.scrubFindings || []" :key="f.ruleId" class="alert" :class="f.severity === 'BLOCKER' ? 'danger' : 'warning'" style="margin-bottom:8px">
               <span>{{ f.severity === 'BLOCKER' ? '⛔' : '⚠' }}</span>
               <span>
                 <b>{{ f.ruleId }}</b> — {{ f.message }}
@@ -164,7 +169,7 @@
           </div>
           <div class="card card-pad">
             <div class="card-title">Riwayat Status (append-only)</div>
-            <div v-for="(h, i) in [...d.claim.statusHistory].reverse()" :key="i" style="display:flex;gap:10px;padding:7px 0;border-bottom:1px dashed var(--border);font-size:12.5px">
+            <div v-for="(h, i) in [...(d.claim.statusHistory || [])].reverse()" :key="i" style="display:flex;gap:10px;padding:7px 0;border-bottom:1px dashed var(--border);font-size:12.5px">
               <span style="color:var(--text-muted);min-width:130px">{{ formatDateTime(h.at) }}</span>
               <span><b>{{ h.actor }}</b>: {{ h.from ? (CLAIM_LABELS[h.from] || h.from) + ' → ' : '' }}{{ CLAIM_LABELS[h.to] || h.to }} {{ h.note ? '— ' + h.note : '' }}</span>
             </div>
@@ -174,7 +179,7 @@
 
       <div class="drawer-foot" v-if="d">
         <template v-for="t in availableTrans" :key="t">
-          <button class="btn" :class="transBtnClass(t)" @click="askTransition(t)">{{ transLabel(t) }}</button>
+          <button class="btn" :class="transBtnClass(t)" :disabled="isSubmitStep(t) && submitBlocked" :title="isSubmitStep(t) && submitBlocked ? 'Selesaikan semua blocker terlebih dahulu' : ''" @click="askTransition(t)">{{ transLabel(t) }}</button>
         </template>
         <router-link v-if="canEdit" :to="'/claims/' + d.claim.id + '/edit'" class="btn btn-outline">Edit Klaim</router-link>
         <button v-if="canDelete" class="btn btn-danger" @click="askDelete">Hapus</button>
@@ -221,7 +226,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { api } from '../api'
-import { state, hasPerm, toast } from '../store'
+import { state, hasPerm, toast, refreshBoot } from '../store'
 import Modal from './Modal.vue'
 import Kpi from './Kpi.vue'
 import Empty from './Empty.vue'
@@ -241,9 +246,9 @@ const overrideReason = ref('')
 const hosp = computed(() => d.value ? sumTariff(d.value.claim.hospitalTariff) : 0)
 const jkn = computed(() => d.value ? jknTotal(d.value.claim.inacbgBaseTariff, d.value.claim.specialCmg) : 0)
 const gap = computed(() => hosp.value - jkn.value)
-const paidSum = computed(() => d.value ? d.value.payments.reduce((a, p) => a + p.amount, 0) : 0)
-const resumeCount = computed(() => d.value?.resume.length || 0)
-const resumeReviewed = computed(() => d.value ? d.value.resume.filter(r => r.reviewed).length : 0)
+const paidSum = computed(() => d.value ? (d.value.payments || []).reduce((a, p) => a + p.amount, 0) : 0)
+const resumeCount = computed(() => d.value?.resume?.length || 0)
+const resumeReviewed = computed(() => d.value ? (d.value.resume || []).filter(r => r.reviewed).length : 0)
 const allReviewed = computed(() => resumeCount.value > 0 && resumeReviewed.value === resumeCount.value)
 const canEdit = computed(() => hasPerm('EDIT') && d.value && (d.value.editable ?? ['draft', 'ready_to_submit', 'disputed'].includes(d.value.claim.status)))
 const canDelete = computed(() => hasPerm('DELETE') && d.value && (d.value.deletable ?? d.value.claim.status === 'draft'))
@@ -281,6 +286,10 @@ const availableTrans = computed(() => {
   if (Array.isArray(d.value.transitions)) return d.value.transitions.filter(t => t.allowed).map(t => t.to)
   return (allowedTrans[d.value.claim.status] || []).filter(t => hasPerm(TRANS_PERM[t] || 'EDIT'))
 })
+// Blocker terbuka (belum di-override) menghalangi klaim disiapkan/diajukan — selesaikan dulu.
+const openBlockers = computed(() => (d.value?.claim.scrubFindings || []).filter(f => f.severity === 'BLOCKER' && !f.overridden))
+const isSubmitStep = (t) => t === 'ready_to_submit' || t === 'submitted'
+const submitBlocked = computed(() => openBlockers.value.length > 0 && availableTrans.value.some(isSubmitStep))
 function transInfo(t) { return d.value?.transitions?.find(x => x.to === t) }
 function transLabel(t) { return transInfo(t)?.label || TRANS_LABELS[t] || t }
 function transBtnClass(t) {
@@ -305,7 +314,12 @@ function mask(s) { return s ? s.slice(0, 4) + '••••' + s.slice(-3) : '�
 function catLabel(k) { return RESUME_CATEGORIES.find(c => c.key === k)?.label || k }
 
 async function load() {
-  d.value = await api('claims/' + props.claimId)
+  try {
+    d.value = await api('claims/' + props.claimId)
+  } catch (e) {
+    toast(e.message || 'Detail klaim gagal dimuat.', 'error')
+    emit('close')
+  }
 }
 onMounted(load)
 
@@ -346,6 +360,7 @@ async function doTransition(t) {
     toast('Status klaim diperbarui → ' + (CLAIM_LABELS[t] || t), 'success')
     confirmState.value = null
     await load()
+    refreshBoot()
     emit('changed')
   } catch (e) { toast(e.message, 'error') }
 }

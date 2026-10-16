@@ -1,0 +1,8 @@
+sep;kategori;nama_item;sub_kategori;tanggal;hasil_catatan;jumlah;satuan;harga_satuan
+0301R001009001;REKAM_MEDIS;Resume Medis Rawat Inap;-;2026-10-02;Ringkasan pulang;1;kali;250000
+0301R001009001;HASIL_LAB;Darah Lengkap;Hematologi;2026-10-03;Hasil normal;2;kali;150000
+0301R001009001;HASIL_RADIOLOGI;Rontgen Thorax;Radiologi;2026-10-03;Tidak ada kelainan;1;kali;200000
+0301R001009001;OBAT;Aspirin 80 mg;-;2026-10-03;Diberikan 1x sehari;10;tablet;5000
+0301R001009001;BMHP;Infus Set;-;2026-10-02;Terpasang;2;buah;35000
+0301R001009001;BILLING;Rincian Tagihan RS;-;2026-10-04;Terlampir;1;lembar;0
+0301R001009001;PENUNJANG_LAINNYA;EKG;Penunjang;2026-10-03;Sinus ritme;1;kali;120000

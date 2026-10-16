@@ -1,15 +1,15 @@
 <template>
   <main class="page">
-    <PageHeader icon="shieldCheck" title="Validasi Klaim (Claim Scrubber)" sub="Rule engine dengan 14 aturan lokal (ICD-10, ICD-9-CM, INA-CBG, e-Klaim, BPJS, POJK). Klaim dengan BLOCKER terbuka tidak dapat masuk batch atau diajukan." />
+    <PageHeader icon="shieldCheck" title="Library Aturan" sub="Rule engine dengan 14 aturan lokal (ICD-10, ICD-9-CM, INA-CBG, e-Klaim, BPJS, POJK). Klaim dengan BLOCKER terbuka tidak dapat masuk batch atau diajukan." />
 
     <div class="tabs">
-      <button class="tab" :class="{ active: tab === 'hasil' }" @click="tab = 'hasil'">Hasil Validasi</button>
+      <button v-if="SHOW_HASIL_TAB" class="tab" :class="{ active: tab === 'hasil' }" @click="tab = 'hasil'">Hasil Validasi</button>
       <button class="tab" :class="{ active: tab === 'library' }" @click="tab = 'library'">Library Aturan</button>
       <button class="tab" :class="{ active: tab === 'causes' }" @click="tab = 'causes'">Penyebab Teratas</button>
     </div>
 
     <!-- Hasil per klaim -->
-    <div v-if="tab === 'hasil'">
+    <div v-if="SHOW_HASIL_TAB && tab === 'hasil'">
       <div class="filterbar">
         <select class="input" v-model="claimId" @change="scrub" style="min-width:340px">
           <option value="">— pilih klaim untuk divalidasi —</option>
@@ -60,14 +60,14 @@
               <td><span class="badge neutral">{{ r.category }}</span></td>
               <td><span class="badge" :class="r.severity === 'BLOCKER' ? 'danger' : r.severity === 'WARNING' ? 'warning' : 'info'">{{ r.severity }}</span></td>
               <td>
-                <input type="checkbox" :checked="r.enabled" :disabled="!hasPerm('CONFIGURE') || !!state.user?.hospitalId" :title="state.user?.hospitalId ? 'Aturan scrub berlaku untuk semua RS — hanya staf SPKD yang dapat mengubah' : ''" @change="toggleRule(r, $event)" :aria-label="'Aktifkan ' + (r.code || r.id)" />
+                <input type="checkbox" :checked="r.enabled" :disabled="!hasPerm('CONFIGURE')" :title="hasPerm('CONFIGURE') ? '' : 'Hanya peran dengan izin CONFIGURE yang dapat mengubah'" @change="toggleRule(r, $event)" :aria-label="'Aktifkan ' + (r.code || r.id)" />
               </td>
               <td style="font-size:11.5px;max-width:280px">{{ r.sourceRef }}</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <div class="note-strip">Aturan dapat diaktifkan/nonaktifkan per RS (izin CONFIGURE). Setiap perubahan tercatat di audit trail.</div>
+      <div class="note-strip">Aturan dapat diaktifkan/nonaktifkan oleh peran dengan izin CONFIGURE (Super Admin, Admin RS, IT/SIMRS). Perubahan berlaku untuk seluruh RS dan tercatat di audit trail.</div>
     </div>
 
     <!-- Penyebab teratas -->
@@ -110,7 +110,9 @@ import Empty from '../components/Empty.vue'
 import Modal from '../components/Modal.vue'
 import { CLAIM_LABELS, docNo } from '../format'
 
-const tab = ref('hasil')
+// Tab Hasil Validasi disembunyikan sementara (kode tetap ada). Ubah ke true untuk menampilkannya lagi.
+const SHOW_HASIL_TAB = false
+const tab = ref(SHOW_HASIL_TAB ? 'hasil' : 'library')
 const claims = ref([])
 const claimId = ref('')
 const result = ref(null)

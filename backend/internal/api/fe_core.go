@@ -438,6 +438,9 @@ type agingRow struct {
 	Status      string `json:"status"`
 	Amount      int64  `json:"amount"`
 	AgeDays     int    `json:"ageDays"`
+	BatchID     string `json:"batchId"`
+	BatchNo     string `json:"batchNo"`
+	BatchName   string `json:"batchName"`
 }
 
 func agingRows(d *dataset, byService bool) ([]agingRow, []engine.Receivable) {
@@ -455,6 +458,9 @@ func agingRows(d *dataset, byService bool) ([]agingRow, []engine.Receivable) {
 		recv = append(recv, engine.Receivable{Amount: o, Basis: *b})
 		rows = append(rows, agingRow{ID: idStr(cl.ID), ClaimNo: cl.ClaimNo, PatientName: cl.PatientName, SEPNo: cl.SEPNo,
 			Insurer: d.insurerName(cl), Status: string(cl.Status), Amount: o, AgeDays: engine.DaysBetween(*b, d.today)})
+		if cl.BatchID != nil {
+			rows[len(rows)-1].BatchID = idStr(*cl.BatchID)
+		}
 	}
 	sort.SliceStable(rows, func(i, j int) bool { return rows[i].AgeDays > rows[j].AgeDays })
 	return rows, recv
@@ -472,6 +478,21 @@ func agingHandler(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		rows, recv := agingRows(d, c.Query("basis") == "service")
+		// Nomor & nama batch untuk drill-down per batch.
+		var batches []model.Batch
+		if err := whereHospital(db, "hospital_id", scope).Find(&batches).Error; err != nil {
+			serverError(c, err)
+			return
+		}
+		bInfo := map[string]model.Batch{}
+		for _, b := range batches {
+			bInfo[idStr(b.ID)] = b
+		}
+		for i := range rows {
+			if b, found := bInfo[rows[i].BatchID]; found {
+				rows[i].BatchNo, rows[i].BatchName = b.BatchNo, b.Name
+			}
+		}
 		buckets, total := engine.AgingBuckets(recv, d.today)
 		var over90 int64
 		for _, b := range buckets {

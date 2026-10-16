@@ -1,6 +1,10 @@
 package model
 
-import "github.com/google/uuid"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // Batch mengelompokkan klaim untuk pengajuan ke penjamin.
 type Batch struct {
@@ -9,6 +13,13 @@ type Batch struct {
 	Name    string `gorm:"size:150;not null" json:"name"`
 	Period  string `gorm:"size:7;not null;index" json:"period"` // format YYYY-MM
 	Note    string `gorm:"type:text" json:"note"`
+
+	// Batch per penjamin: klaim penjamin tsb dengan tanggal pulang (akhir episode) dalam
+	// rentang PeriodStart–PeriodEnd otomatis masuk saat batch dibuat. Nil pada batch lama.
+	InsurerID   *uuid.UUID `gorm:"type:uuid;index" json:"insurer_id"`
+	Insurer     *Insurer   `gorm:"foreignKey:InsurerID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT" json:"insurer,omitempty"`
+	PeriodStart *time.Time `gorm:"type:date" json:"period_start"`
+	PeriodEnd   *time.Time `gorm:"type:date" json:"period_end"`
 
 	HospitalID  uuid.UUID `gorm:"type:uuid;not null;index" json:"hospital_id"`
 	Hospital    *Hospital `gorm:"foreignKey:HospitalID;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT" json:"hospital,omitempty"`

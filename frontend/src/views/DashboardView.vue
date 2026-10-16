@@ -5,7 +5,7 @@
         <span class="demo-pill"><Icon name="flask" :size="12" /> Data Demo</span>
       </template>
       <template #actions>
-        <router-link to="/claims/new" class="btn btn-primary btn-sm" v-if="hasPerm('CREATE')"><Icon name="plus" :size="14" /> Klaim Baru</router-link>
+        <router-link to="/claims/new" class="btn btn-primary btn-sm" v-if="canCreateClaim()"><Icon name="plus" :size="14" /> Klaim Baru</router-link>
         <button class="btn btn-outline btn-sm" @click="refresh" :disabled="busy"><span v-if="busy" class="spin" /><Icon name="refresh" :size="14" /> Muat Ulang</button>
       </template>
     </PageHeader>
@@ -234,6 +234,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { api } from '../api'
 import { state, toast, hasPerm, loadBoot } from '../store'
+import { canCreateClaim } from '../access'
 import Kpi from '../components/Kpi.vue'
 import PageHeader from '../components/PageHeader.vue'
 import Empty from '../components/Empty.vue'
